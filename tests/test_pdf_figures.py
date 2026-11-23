@@ -42,6 +42,52 @@ def make_pdf():
         return document.tobytes()
 
 
+def test_prose_crop_is_rejected_but_short_diagram_labels_are_not():
+    info = {"text_blocks": [
+        {"bbox": [540, 650, 935, 785],
+         "text": "Object X of mass m is moving to the right with a speed of 3 m/s when it collides "
+                 "with object Y of mass m that is moving to the right with a speed of 2 m/s."},
+        {"bbox": [100, 100, 160, 140], "text": "T"},
+    ]}
+    assert pdf_figures._prose_overlap_reason(info, [540, 650, 935, 785])
+    assert pdf_figures._prose_overlap_reason(info, [90, 90, 170, 150]) == ""
+
+
+def test_native_raster_alternative_text_is_not_mistaken_for_prose():
+    info = {
+        "candidates": [{"id": "p28_raster_001", "type": "raster",
+                        "bbox": [171.3724, 68.7878, 377.5488, 223.106]}],
+        "text_blocks": [
+            {"bbox": [171.3724, 74.6519, 382.0259, 258.2905],
+             "text": "The figure shows a large circle of radius R from the top view. "
+                     "Inside the bottom portion of the circle is the label I. A small circle "
+                     "labeled m is located outside the circle on the top left of the circle."},
+        ],
+    }
+    assert pdf_figures._prose_overlap_reason(
+        info, [171.3724, 68.7878, 377.5488, 223.106]
+    ) == ""
+
+
+def test_raster_alternative_text_does_not_hide_a_body_paragraph_in_the_same_crop():
+    info = {
+        "candidates": [{"id": "p22_raster_003", "type": "raster",
+                        "bbox": [549.8047, 565.9093, 901.1771, 635.6063]}],
+        "text_blocks": [
+            {"bbox": [549.8047, 565.9093, 901.1771, 635.6063],
+             "text": "The figure consists of two spheres labeled X and Y, with arrows "
+                     "showing their velocities before and after the collision."},
+            {"bbox": [529.4078, 651.0091, 925.5112, 759.4875],
+             "text": "Object X of mass m is moving to the right with a speed of 3 m/s when it "
+                     "collides with object Y of mass m that is moving to the right at 2 m/s. "
+                     "Which of the following is true of the collision?"},
+        ],
+    }
+    assert pdf_figures._prose_overlap_reason(
+        info, [529.4048, 530.6314, 925.5112, 860.0959]
+    )
+
+
 def fake_layout(info, **changes):
     figures = [{"bbox": [125, 140, 375, 340],
                 "candidate_ids": [item["id"] for item in info.get("candidates", [])],
@@ -136,13 +182,14 @@ def test_missing_candidates_are_not_certified_by_model_confidence(tmp_path, monk
     assert "未被解释" in result["issues"][0]["reason"]
 
 
-def test_half_crop_ignored_large_image_and_duplicate_region_require_review():
+def test_half_crop_snaps_but_ignored_large_raster_and_duplicate_region_require_review():
     info = {"page_index": 0, "width": 400, "height": 500,
             "candidates": [{"id": "image1", "bbox": [100, 100, 500, 500], "type": "raster"}]}
     figure = {"bbox": [100, 100, 300, 500], "candidate_ids": ["image1"],
               "anchor_before": "anchor", "anchor_after": "", "review_required": False}
-    _, warnings = pdf_figures._validate_layout({"page_complete": True, "figures": [figure]}, info)
-    assert any("未完整覆盖" in warning for warning in warnings)
+    figures, warnings = pdf_figures._validate_layout({"page_complete": True, "figures": [figure]}, info)
+    assert figures[0]["bbox"] == pytest.approx([100, 100, 500, 500], abs=8)
+    assert not any("未完整覆盖" in warning for warning in warnings)
     notes = []
     _, warnings = pdf_figures._validate_layout({"page_complete": True, "figures": [],
         "ignored_candidates": [{"id": "image1", "reason": "formula"}]}, info, notes=notes)
@@ -598,6 +645,72 @@ def test_ocr_slots_have_distinct_identity_even_with_repeated_labels():
     assert figures[0]["slot_id"] == "p1-s2" and not warnings
 
 
+def test_option_slots_bind_unassigned_figures_in_reading_order():
+    text = "3. Choose\n(A) [插图待补]\n(B) [插图待补]\n(C) [插图待补]"
+    slots = pdf_figures.describe_figure_slots(text, 0)
+    info = {"page_index": 0, "width": 500, "height": 800, "figure_slots": slots}
+    result = {"page_complete": True, "figures": [
+        {"bbox": [100, 400, 300, 600], "review_required": False},
+        {"bbox": [100, 100, 300, 300], "review_required": False},
+        {"bbox": [100, 250, 300, 380], "review_required": False},
+    ]}
+    notes = []
+    figures, warnings = pdf_figures._validate_layout(result, info, notes=notes)
+    ordered = sorted(figures, key=lambda figure: figure["bbox"][1])
+    assert [figure["slot_id"] for figure in ordered] == ["p1-s1", "p1-s2", "p1-s3"]
+    assert any("选项阅读顺序" in note for note in notes)
+    assert not warnings
+
+
+def test_option_slot_binding_keeps_a_complete_model_mapping():
+    text = "3. Choose\n(A) [插图待补]\n(B) [插图待补]"
+    slots = pdf_figures.describe_figure_slots(text, 0)
+    info = {"page_index": 0, "width": 500, "height": 800, "figure_slots": slots}
+    result = {"page_complete": True, "figures": [
+        {"bbox": [100, 100, 300, 300], "slot_id": "p1-s2", "review_required": False},
+        {"bbox": [100, 400, 300, 600], "slot_id": "p1-s1", "review_required": False},
+    ]}
+    figures, _ = pdf_figures._validate_layout(result, info)
+    assert [figure["slot_id"] for figure in figures] == ["p1-s2", "p1-s1"]
+
+
+def test_hidden_figure_descriptions_correct_a_clear_slot_swap():
+    source = (
+        "17. A wheel turns under a frictional torque.\n[插图待补: 图1]\n"
+        "18. A uniform beam of weight W is attached to a wall by a pivot and held "
+        "horizontal by a cable at angle theta.\n[插图待补: 图2]\n"
+        "19. An arrow of mass m strikes a meterstick of mass M lying on a horizontal "
+        "surface.\n[插图待补: 图3]\n"
+        "20. Object X collides with object Y. The collision is inelastic and momentum "
+        "is conserved in the collision.\n"
+    )
+    slots = pdf_figures.describe_figure_slots(source, 0)
+    info = {
+        "page_index": 0,
+        "figure_slots": slots,
+        "candidates": [
+            {"id": "meterstick", "type": "raster", "bbox": [0, 0, 100, 100],
+             "description": "The figure consists of a meter stick and an arrow lying "
+                            "on a horizontal surface."},
+            {"id": "beam", "type": "raster", "bbox": [0, 100, 100, 200],
+             "description": "The figure consists of a horizontal beam attached to a "
+                            "wall by a pivot and held by a cable at angle theta."},
+            {"id": "collision", "type": "raster", "bbox": [0, 200, 100, 300],
+             "description": "The figure shows object X colliding with object Y. The "
+                            "collision has before and after states."},
+        ],
+    }
+    figures = [
+        {"id": "figure-1", "slot_id": "p1-s1", "candidate_ids": ["meterstick"]},
+        {"id": "figure-2", "slot_id": "p1-s2", "candidate_ids": ["beam"]},
+        {"id": "figure-3", "slot_id": "p1-s3", "candidate_ids": ["collision"]},
+    ]
+    notes = []
+    pdf_figures._bind_described_figures_to_slots(figures, info, source, notes)
+    assert [figure["slot_id"] for figure in figures] == ["p1-s2", "p1-s1", "p1-s3"]
+    assert any("校正 2 幅图" in note for note in notes)
+
+
 def test_review_report_identifies_question_and_hides_internal_geometry():
     path = "/static/uploads/tmp/diagram.png"
     questions = [{"content": "question 13"}, {"content": "question 21 ![](\"x\") " + path}]
@@ -615,6 +728,18 @@ def test_review_report_identifies_question_and_hides_internal_geometry():
     assert "75%" not in str(report["pdf_review_items"])
     assert "p6_raster" not in str(report["pdf_review_items"])
     assert report["unmatched_source"][0]["affected_questions"] == [{"question_index": 1, "source_number": 21}]
+
+
+def test_duplicate_figure_reference_marks_the_card_for_source_review():
+    from mathbank.source_hybrid_request import annotate_duplicate_figures
+    path = "/static/uploads/tmp/reused.png"
+    question = {"content": f"stem ![]({path})\n(D) ![]({path})"}
+    assert annotate_duplicate_figures([question]) == 1
+    assert question["source_review"]["required"] is True
+    assert any("重复引用" in reason for reason in question["source_review"]["reasons"])
+    unique = {"content": f"stem ![]({path})\nanswer ![](/static/uploads/tmp/other.png)"}
+    assert annotate_duplicate_figures([unique]) == 0
+    assert "source_review" not in unique
 
 
 def test_layout_aware_ocr_reuses_joint_layout_without_second_vision_request(monkeypatch):

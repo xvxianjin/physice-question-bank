@@ -13,6 +13,7 @@ from mathbank.pdf_layout import (
     MAX_CANDIDATES,
     MAX_CROP_PIXELS,
     MAX_CROP_SIDE,
+    _attach_candidate_descriptions,
     apply_figure_anchors,
     crop_pdf_figure,
     inspect_pdf_page,
@@ -20,6 +21,23 @@ from mathbank.pdf_layout import (
     refine_figure_bbox,
     scan_background_candidate_ids,
 )
+
+
+def test_hidden_figure_descriptions_attach_only_to_their_raster_candidate():
+    candidates = [
+        {"id": "beam", "type": "raster", "bbox": [210, 284, 338, 434]},
+        {"id": "vector", "type": "vector", "bbox": [400, 400, 500, 500]},
+    ]
+    text_blocks = [
+        {"bbox": [210, 341, 359, 463],
+         "text": "The figure consists of a horizontal beam attached to a wall by a "
+                 "pivot with a cable at angle theta and a downward weight W."},
+        {"bbox": [210, 500, 500, 560],
+         "text": "20. Object X is moving to the right and collides with object Y."},
+    ]
+    _attach_candidate_descriptions(candidates, text_blocks)
+    assert "horizontal beam" in candidates[0]["description"]
+    assert "description" not in candidates[1]
 
 
 def test_scan_strip_native_shortcut_uses_union_coverage_not_overlapping_area_sum():
@@ -205,16 +223,22 @@ def test_refine_restores_small_raster_margin_but_not_an_unreferenced_candidate()
     assert any("原生候选 image" in warning for warning in result["warnings"])
 
 
-@pytest.mark.parametrize(("original", "ids"), [
-    ([100, 100, 200, 300], ["image"]),
-    ([100, 100, 200, 300], ["missing"]),
-    ([100, 100, 300, 300], ["image", "missing"]),
-])
-def test_refine_half_figure_or_unknown_id_remains_unmodified(original, ids):
+def test_refine_half_figure_snaps_to_exact_native_extent():
     page_info = {"width": 600, "height": 800,
                  "candidates": [{"id": "image", "bbox": [100, 100, 300, 300]}],
                  "text_blocks": [{"bbox": [110, 95, 120, 110], "text": "A"}]}
-    result = refine_figure_bbox(page_info, original, ids)
+    result = refine_figure_bbox(page_info, [100, 100, 200, 300], ["image"])
+    assert result["bbox"][:2] == pytest.approx([100, 100], abs=8)
+    assert result["bbox"][2:] == pytest.approx([300, 300], abs=8)
+    assert any("原生候选 image" in warning for warning in result["warnings"])
+
+
+@pytest.mark.parametrize("original", [[100, 100, 200, 300], [100, 100, 300, 300]])
+def test_refine_unknown_or_mixed_reference_keeps_unmodified(original):
+    page_info = {"width": 600, "height": 800,
+                 "candidates": [{"id": "image", "bbox": [100, 100, 300, 300]}],
+                 "text_blocks": [{"bbox": [110, 95, 120, 110], "text": "A"}]}
+    result = refine_figure_bbox(page_info, original, ["missing"])
     assert result["bbox"] == original
     assert result["warnings"]
 
@@ -239,6 +263,28 @@ def test_refine_intersecting_short_instruction_is_not_a_diagram_label():
     assert any("原生正文相交" in warning for warning in result["warnings"])
 
 
+def test_hidden_raster_description_is_not_a_prose_boundary():
+    description = (
+        "The figure consists of a horizontal beam attached to a vertical wall by a pivot, "
+        "with a cable pulling the free end upward and a weight arrow at the center."
+    )
+    page_info = {
+        "width": 600,
+        "height": 800,
+        "candidates": [{
+            "id": "image",
+            "type": "raster",
+            "bbox": [100, 100, 300, 300],
+            "description": description,
+        }],
+        "text_blocks": [{"bbox": [96, 94, 306, 310], "text": description}],
+    }
+    result = refine_figure_bbox(page_info, [100, 100, 200, 300], ["image"])
+    assert result["bbox"][:2] == pytest.approx([100, 100], abs=8)
+    assert result["bbox"][2:] == pytest.approx([300, 300], abs=8)
+    assert not any("原生正文相交" in warning for warning in result["warnings"])
+
+
 def test_refine_short_but_far_extending_label_is_not_expanded():
     page_info = {"width": 600, "height": 800, "candidates": [],
                  "text_blocks": [{"bbox": [290, 150, 700, 170], "text": "A B C D"}]}
@@ -256,7 +302,7 @@ def test_refine_does_not_recruit_nonintersecting_labels_through_padding():
     assert any("碰到其他文字" in warning for warning in result["warnings"])
 
 
-def test_refine_overlapping_candidates_cannot_chain_past_total_growth_limit():
+def test_refine_touching_candidates_snap_to_cluster_within_page_cap():
     page_info = {"width": 600, "height": 800, "text_blocks": [], "candidates": [
         {"id": "left", "bbox": [75, 100, 190, 300]},
         {"id": "right", "bbox": [210, 100, 325, 300]},
@@ -265,8 +311,9 @@ def test_refine_overlapping_candidates_cannot_chain_past_total_growth_limit():
     ]}
     result = refine_figure_bbox(page_info, [100, 100, 300, 300], ["left", "right", "top", "bottom"])
     x0, y0, x1, y1 = result["bbox"]
-    assert (x1 - x0) * (y1 - y0) <= 200 * 200 * 1.5
-    assert any("超出有限扩张" in warning for warning in result["warnings"])
+    assert (x0, y0, x1, y1) == pytest.approx((75, 75, 325, 325), abs=8)
+    assert (x1 - x0) * (y1 - y0) <= 200 * 200 * 10
+    assert any("原生候选" in warning for warning in result["warnings"])
 
 
 @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
@@ -381,6 +428,35 @@ def test_multiple_anchors_resolve_against_original_source():
     assert result["markdown"].index("first.png") < result["markdown"].index("First.")
     assert result["markdown"].index("middle.png") < result["markdown"].index("Next.")
     assert result["markdown"].index("Last.") < result["markdown"].index("last.png")
+
+
+def test_reversed_question_heading_attaches_page_top_figure_only_at_unique_question():
+    source = (
+        "17. A wheel question.\n"
+        "(A) first\n"
+        "19. An arrow of mass and speed $v_{0}$ strikes and\n"
+        "(D) fourth\n"
+        "sticks to one end. The meterstick is initially at rest as shown in the diagram above.\n"
+        "18. A beam question.\n"
+        "20. A collision question."
+    )
+    figure = _figure(
+        before="sticks to one end. The meterstick is initially at rest as shown in the diagram above.",
+        after="19. An arrow of mass and speed strikes and",
+    )
+    result = apply_figure_anchors(source, [figure])
+    assert result["attached"] == ["fig1"]
+    assert result["unmatched"] == []
+    assert result["markdown"].index("![插图]") < result["markdown"].index("19. An arrow")
+    assert result["markdown"].index("17. A wheel") < result["markdown"].index("![插图]")
+
+
+def test_reversed_anchor_does_not_guess_when_heading_is_repeated():
+    source = "19. First.\n19. Second.\nshown above."
+    figure = _figure(before="shown above.", after="19. First.")
+    result = apply_figure_anchors(source, [figure])
+    assert result["attached"] == []
+    assert result["unmatched"]
 
 
 def test_markdown_table_anchor_keeps_the_original_row_and_cell():

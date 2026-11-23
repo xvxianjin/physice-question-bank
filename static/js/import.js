@@ -2773,6 +2773,21 @@
                         ...(typeof item.slot_label === 'string' ? {slotLabel: item.slot_label} : {})});
                 });
                 actions.appendChild(crop);
+                const pendingCrop = window.MathBankSafe.safeImageUrl(item.candidate_image_path);
+                if (pendingCrop) {
+                    const attach = document.createElement('button');
+                    attach.type = 'button';
+                    attach.className = 'pdf-figure-review-attach glass-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-brand-700';
+                    attach.textContent = '插入已裁图';
+                    attach.title = '把自动裁出的待补图插入题卡对应占位；插图范围仍需人工核对。';
+                    attach.disabled = questionIndex < 0;
+                    attach.addEventListener('click', () => {
+                        if (generation !== parsedQuestionsGeneration || questionIndex < 0
+                                || parsedQuestionsData[questionIndex] !== selectedQuestions[questionIndex]) return;
+                        insertPendingFigureCrop(item, questionIndex, generation);
+                    });
+                    actions.appendChild(attach);
+                }
                 if (!url) {
                     const unavailable = document.createElement('span');
                     unavailable.textContent = '原页尚未载入，可重新打开工程后补图。';
@@ -2781,6 +2796,80 @@
                 row.appendChild(actions);
                 list.appendChild(row);
             });
+        }
+
+        function insertPendingFigureCrop(item, questionIndex, generation) {
+            const question = parsedQuestionsData[questionIndex];
+            const card = document.getElementById(`parsed-card-${questionIndex}`);
+            const url = window.MathBankSafe.safeImageUrl(item.candidate_image_path);
+            if (!question || !card || card.__sourceQuestion !== question || generation !== parsedQuestionsGeneration) return;
+            if (!url) {
+                showToast('这张待补裁片已不可用，请重新打开工程或手动截图。', 'warning');
+                return;
+            }
+            const field = ['content', 'answer_markdown'].includes(item.target_field) ? item.target_field : 'content';
+            const textarea = card.querySelector(field === 'answer_markdown'
+                ? '.card-answer-textarea' : '.card-content-textarea');
+            if (!textarea) {
+                showToast('目标题卡已关闭，请重新打开题卡后再插入。', 'info');
+                return;
+            }
+            const value = textarea.value;
+            const label = typeof item.slot_label === 'string' ? item.slot_label : '';
+            let anchor = '';
+            if (label) {
+                const first = value.indexOf(label);
+                if (first >= 0 && value.indexOf(label, first + label.length) < 0) anchor = label;
+            }
+            if (!anchor) {
+                const markers = [...value.matchAll(/\[插图待补(?:\s*[:：]\s*[^\]\n]{0,80})?\]/g)];
+                if (markers.length === 1) anchor = markers[0][0];
+            }
+            if (!anchor) {
+                showToast('题卡里没有唯一的插图占位，请用“手动截图”选择插入位置。', 'info');
+                return;
+            }
+            if (window.MathBankImageAssets?.collect(value).includes(url)) {
+                showToast('这张裁片已经在题卡中。', 'info');
+                return;
+            }
+            const start = value.indexOf(anchor);
+            const result = pdfCropInsertImage(value, url, {start, end: start + anchor.length});
+            textarea.value = result.text;
+            question[field] = result.text;
+            if (!Array.isArray(question.image_paths)) question.image_paths = [];
+            if (!question.image_paths.includes(url)) question.image_paths.push(url);
+            const receipts = Array.isArray(question.document_import_manual_crops)
+                ? question.document_import_manual_crops : [];
+            question.document_import_manual_crops = receipts.filter(receipt =>
+                !(receipt?.slot_id === item.slot_id && receipt?.page_number === item.page_number)).concat({
+                    slot_id: item.slot_id,
+                    page_number: item.page_number,
+                    target_field: field,
+                    image_path: url,
+                    project_card_id: String(question.project_card_id || ''),
+                    project_id: window.MathBankDocumentImportSession?.getProjectId?.() || null,
+                    task_id: window.currentPdfTaskId,
+                    method: 'pending_figure',
+                    ai_verified: false
+                });
+            const review = question.source_review && typeof question.source_review === 'object'
+                ? question.source_review : {};
+            const reasons = Array.isArray(review.reasons) ? review.reasons.slice() : [];
+            const reason = '待补裁片由自动配图托盘插入，尚未通过视觉核验，请核对图形范围与标注。';
+            if (!reasons.includes(reason)) reasons.push(reason);
+            question.source_review = {...review, required: true, reasons};
+            question.document_import_source_edited = true;
+            textarea.dispatchEvent(new Event('input', {bubbles: true}));
+            renderParsedCardPreview(card, card.querySelector('.card-content-textarea').value,
+                card.querySelector('.card-answer-textarea').value);
+            const badgesContainer = document.getElementById(`card-images-badges-${questionIndex}`);
+            if (badgesContainer) {
+                badgesContainer.innerHTML = '';
+                question.image_paths.forEach(path => appendSafeImageBadge(badgesContainer, path));
+            }
+            window.MathBankDocumentImportSession?.saveSoon();
+            showToast('已插入待补裁片；请核对图形范围与标注后再导入。', 'warning');
         }
 
         function pdfLayoutReportSummary(layout, report) {
@@ -2799,6 +2888,24 @@
                 calls +
                 '本地检查与归位不代表已通过视觉核验。' +
                 (count('review_pages') ? `，${count('review_pages')} 页保留配图说明。` : '。');
+        }
+
+        function pdfFormulaRefinementSummary(refinement) {
+            if (!refinement || typeof refinement !== 'object') return '';
+            const count = key => {
+                const value = Number(refinement[key]);
+                return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+            };
+            if (refinement.status === 'unavailable') {
+                return '原生页公式核对：未配置可用的图像模型，公式保持原样。';
+            }
+            if (!count('blocks')) return '';
+            let text = `原生页公式核对：检测 ${count('blocks')} 处，定位 ${count('matched')} 处，` +
+                `恢复 ${count('accepted')} 处`;
+            if (count('rejected')) text += `，${count('rejected')} 处保留公式待核对标记`;
+            if (count('unmatched')) text += `，${count('unmatched')} 处未能唯一定位`;
+            if (count('calls')) text += `；调用 ${count('calls')} 页`;
+            return text + '。';
         }
 
         function pdfCurrentOcrReportSummary(vision, resume, report) {
@@ -3292,6 +3399,7 @@
             const unmatched = Array.isArray(report?.unmatched_source) ? report.unmatched_source : [];
             const reviewCount = Number(report?.source_review_count || 0);
             const layoutSummary = pdfLayoutReportSummary(report?.pdf_layout, report);
+            const formulaSummary = pdfFormulaRefinementSummary(report?.pdf_formula_refinement);
             const extractionSummary = pdfExtractionReportSummary(report?.pdf_extraction, report?.pdf_vision, report?.pdf_resume, report);
             const splittingSummary = pdfProjectParseReportSummary(report, {includeOcr: !extractionSummary})
                 || ((report?.pdf_project_legacy_parse || report?.pdf_project_parse) ? '' : paperSplittingReportSummary(report?.pdf_splitting, report?.pdf_question_validation));
@@ -3299,7 +3407,7 @@
             const warnings = pdfLayoutWarnings(report);
             const notes = pdfLayoutNotes(report);
             const reviewItems = pdfReviewItemsForReport(report);
-            if (!unmatched.length && !reviewCount && !layoutSummary && !extractionSummary && !splittingSummary && !verificationSummary && !reviewItems.length && !notes.length) return;
+            if (!unmatched.length && !reviewCount && !layoutSummary && !formulaSummary && !extractionSummary && !splittingSummary && !verificationSummary && !reviewItems.length && !notes.length) return;
             const wrapper = document.getElementById('parsedQuestionsWrapper');
             if (!wrapper) return;
             const panel = document.createElement('details');
@@ -3351,6 +3459,12 @@
                 const summary = document.createElement('p');
                 summary.className = 'font-semibold mb-2';
                 summary.textContent = layoutSummary;
+                panel.appendChild(summary);
+            }
+            if (formulaSummary) {
+                const summary = document.createElement('p');
+                summary.className = 'pdf-formula-refinement-summary mb-2';
+                summary.textContent = formulaSummary;
                 panel.appendChild(summary);
             }
             if (extractionSummary) {
@@ -3410,6 +3524,8 @@
                 appendImportLog(layoutSummary, 'info');
                 pdfLayoutWarnings(report).forEach(warning => appendImportLog(warning, 'info'));
             }
+            const formulaSummary = pdfFormulaRefinementSummary(report?.pdf_formula_refinement);
+            if (formulaSummary) appendImportLog(formulaSummary, 'info');
             if (!report?.math_locks_created) return;
             const byId = Number(report.math_locks_restored_by_id || report.math_locks_by_id || 0);
             const byContent = Number(report.math_locks_restored_by_content || report.math_locks_by_content || 0);

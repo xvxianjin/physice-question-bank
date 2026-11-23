@@ -16,6 +16,7 @@ from test_pdf_layout_frontend import pdf_script  # noqa: F401
     'progress_preserves_save_state_and_pending_controls',
     'pending_figures_locate_physical_pages_and_proven_questions',
     'unbound_or_ambiguous_figures_require_explicit_question_selection',
+    'pending_crop_can_fill_its_own_placeholder_without_a_model_call',
     'stale_pending_actions_do_not_open_a_different_question',
     'teacher_edits_keep_the_automatic_record_as_history',
     'pending_or_unavailable_figures_do_not_block_text_import',
@@ -120,6 +121,25 @@ const figureScenarios={
   select.value='1';select.dispatchEvent(new Event('change'));assert.equal(button.disabled,false);
   button.dispatchEvent(new Event('click'));assert.equal(calls[0].index,1);
   assert.equal(requests.length,0,'choosing a crop target does not call a model');
+ },
+ async pending_crop_can_fill_its_own_placeholder_without_a_model_call(){
+  const qs=[{...question('1. 题干\n[插图待补: 图1]\n继续'),project_card_id:'q1',source_number:1}];
+  await open(details('pending-crop',1,{questions:qs,baselineQuestions:qs}));withPages();
+  const report=figureReport({items:[{id:'f7',page_number:7,slot_id:'p7-s1',status:'pending',
+   reason:'crop_not_accepted',source_number:1,slot_label:'[插图待补: 图1]',
+   target_field:'content',candidate_image_path:'/static/uploads/tmp/cropped.png'}]});
+  renderSourceIntegrityReport(report);
+  const row=panel().querySelector('.pdf-figure-review-item');
+  const attach=[...row.querySelectorAll('button')].find(button=>button.textContent==='插入已裁图');
+  assert.ok(attach);assert.equal(attach.disabled,false);
+  attach.dispatchEvent(new Event('click'));
+  const card=document.getElementById('parsed-card-0'),value=card.querySelector('.card-content-textarea').value;
+  assert.ok(value.includes('![插图](/static/uploads/tmp/cropped.png)'));
+  assert.ok(!value.includes('[插图待补: 图1]'));
+  assert.ok(parsedQuestionsData[0].image_paths.includes('/static/uploads/tmp/cropped.png'));
+  assert.equal(parsedQuestionsData[0].source_review.required,true);
+  assert.ok(parsedQuestionsData[0].source_review.reasons.some(reason=>reason.includes('尚未通过视觉核验')));
+  assert.equal(requests.length,0,'inserting the existing pending crop never calls a model');
  },
  async stale_pending_actions_do_not_open_a_different_question(){
   await open();withPages();renderSourceIntegrityReport(figureReport());

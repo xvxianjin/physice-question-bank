@@ -7280,6 +7280,10 @@ def run_pdf_parsing_task(
                     if local_idx in mineru_pending:
                         continue
                     page_num = target_page_indices[local_idx]
+                    if inspector_pages.get(page_num, {}).get("needs_full_vision"):
+                        # Reordering errors cross prose and formulas; a
+                        # regional patch keeps the bad source order.
+                        continue
                     info = page_layout_infos.get(page_num)
                     if info is None:
                         info = inspect_pdf_page(document[page_num], page_num)
@@ -7736,6 +7740,30 @@ def run_pdf_parsing_task(
             DOCUMENT_TASKS.update(task_id, pdf_layout={
                 "schema": layout_result["schema"], "pages": layout_result["pages"],
             }, diagnostics=diagnostics)
+        # Native text preserves the question wording but flattens visual
+        # fractions and superscripts. Refine only pages that did not already
+        # come from a visual transcript, so a valid OCR page is never rewritten.
+        native_local_indices = [
+            index for index in range(total_target_pages)
+            if index not in all_ocr_indices and index not in furniture_pages
+        ]
+        if pdf_strategy != "force_ocr" and native_local_indices:
+            from mathbank.pdf_formula_review import refine_pdf_formulas
+
+            DOCUMENT_TASKS.update(
+                task_id, status="layout_analysis", progress=80,
+                log="正在核对原生页中的公式结构，无法确认的公式会保留待核对标记…",
+            )
+            refined = refine_pdf_formulas(
+                file_bytes, ocr_results, page_images, target_page_indices,
+                eligible_pages={target_page_indices[index] for index in native_local_indices},
+                check_cancelled=check_pdf_cancelled,
+                report_attempt=report_pdf_attempt,
+            )
+            ocr_results = refined["page_texts"]
+            if layout_result is not None:
+                layout_result["page_texts"] = list(ocr_results)
+            diagnostics["pdf_formula_refinement"] = refined["diagnostics"]
         # Retain the exact first-pass transcription used for splitting. Later
         # source review can check its ranges without re-running page recognition.
         # Keep complete pages or no page cache; never certify truncated evidence.

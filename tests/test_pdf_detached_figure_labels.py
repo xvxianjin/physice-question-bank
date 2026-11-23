@@ -151,13 +151,14 @@ def test_new_label_band_cannot_recruit_an_unrelated_native_paragraph():
         assert any("碰到邻文" in value for value in result["warnings"])
 
 
-def test_half_figure_and_unknown_reference_keep_the_existing_rejection_boundary():
+def test_half_figure_snaps_while_unknown_reference_is_rejected():
     with fitz.open() as document:
         page=triangle(document)
         info=inspect_pdf_page(page,0);item=candidate(info)
         half=list(item["bbox"]);half[2]=(half[0]+half[2])/2
         result=refine_figure_bbox(info,half,[item["id"]])
-        assert result["bbox"]==half and any("75%" in value for value in result["warnings"])
+        assert result["bbox"][0]<=half[0] and result["bbox"][2]>=half[2]
+        assert any("原生候选" in value for value in result["warnings"])
         result=refine_figure_bbox(info,item["bbox"],["unknown"])
         assert result["bbox"]==item["bbox"]
 

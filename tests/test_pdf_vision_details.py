@@ -249,6 +249,36 @@ def test_same_size_inplace_change_with_restored_mtime_is_kept_not_published(tmp_
     assert registered[0].read_bytes() == changed[0] and not registered[1].exists()
 
 
+def test_windows_descriptor_and_path_ctime_difference_is_tolerated(tmp_path, monkeypatch):
+    path = tmp_path.resolve() / "owned.png"
+    data = b"owned PNG bytes"
+    path.write_bytes(data)
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0))
+    real_lstat = Path.lstat
+
+    def lstat(candidate, *args, **kwargs):
+        value = real_lstat(candidate, *args, **kwargs)
+        if candidate != path:
+            return value
+        return SimpleNamespace(
+            st_mode=value.st_mode, st_dev=value.st_dev, st_ino=value.st_ino,
+            st_size=value.st_size, st_mtime_ns=value.st_mtime_ns,
+            st_ctime_ns=value.st_ctime_ns + 1,
+        )
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+    try:
+        monkeypatch.setattr(details, "_CTIME_CROSS_INTERFACE_TOLERANT", True)
+        owned = details._freeze_owned_file(path, descriptor, data)
+        assert owned.path == path
+        assert owned.sha256 == hashlib.sha256(data).hexdigest()
+        monkeypatch.setattr(details, "_CTIME_CROSS_INTERFACE_TOLERANT", False)
+        with pytest.raises(ValueError, match="详情图路径已变化"):
+            details._freeze_owned_file(path, descriptor, data)
+    finally:
+        os.close(descriptor)
+
+
 @pytest.mark.parametrize("replacement", ["different_size", "same_size_all_stat_reused", "same_bytes_new_ctime"])
 def test_rollback_inode_reuse_is_deterministic_and_cannot_claim_replacement(tmp_path, monkeypatch, replacement):
     path = tmp_path.resolve() / "owned.png"

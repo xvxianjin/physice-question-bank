@@ -202,7 +202,8 @@ def review_pdf_layout_figures(layout_result, source_texts, page_indices, page_im
                 pending_count += 1
             items.append({"id": figure["id"], "slot_id": figure["slot_id"], "page_number": index+1,
                 "status": "corrected" if status == "repaired" else "verified" if status == "accepted" else "pending",
-                "reason": "" if status in {"accepted", "repaired"} else reason})
+                "reason": "" if status in {"accepted", "repaired"} else reason,
+                "candidate_image_path": figure.get("candidate_image_path") or ""})
         texts[local], attached = _anchor_page(source_texts[local], accepted, pending)
         for figure in accepted:
             figure["attached"] = figure["id"] in attached

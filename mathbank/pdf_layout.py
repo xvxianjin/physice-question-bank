@@ -25,6 +25,11 @@ CROP_DPI = 200
 MAX_LABEL_SEGMENTS = 6000
 MAX_LABEL_GEOMETRY_WORK = 20000
 MAX_LABEL_ANCHORS = 24
+_FIGURE_DESCRIPTION = re.compile(
+    r"^\s*(?:the|this|a|an|two|three|four|five)\s+"
+    r"(?:figures?|diagrams?|graphs?|images?|illustrations?|pictures?)\b",
+    re.IGNORECASE,
+)
 
 
 def normalize_model_bbox(value) -> list:
@@ -100,6 +105,93 @@ def _normalized(rect, page_rect) -> list[float]:
         round((rect.x1 - page_rect.x0) / page_rect.width * 1000, 4),
         round((rect.y1 - page_rect.y0) / page_rect.height * 1000, 4),
     ]
+
+
+def _attach_candidate_descriptions(candidates: list[dict], text_blocks: list[dict]) -> None:
+    """Attach bounded hidden figure descriptions to their native raster boxes.
+
+    Tagged PDFs can expose image alternative text as a long text block near the
+    image. It is evidence for which question a figure illustrates, never a
+    replacement for the visible page or the crop. Attach only descriptive
+    prefixes that cover a substantial part of one raster candidate.
+    """
+    for candidate in candidates:
+        if not isinstance(candidate, dict) or candidate.get("type") != "raster":
+            continue
+        box = candidate.get("bbox")
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            continue
+        try:
+            left, top, right, bottom = (float(value) for value in box)
+        except (TypeError, ValueError):
+            continue
+        area = max(1.0, right - left) * max(1.0, bottom - top)
+        best = None
+        for block in text_blocks:
+            text = str(block.get("text") or "").strip()
+            coords = block.get("bbox")
+            if len(text) < 60 or not _FIGURE_DESCRIPTION.match(text):
+                continue
+            if not isinstance(coords, (list, tuple)) or len(coords) != 4:
+                continue
+            try:
+                block_left, block_top, block_right, block_bottom = (
+                    float(value) for value in coords)
+            except (TypeError, ValueError):
+                continue
+            overlap = (max(0.0, min(right, block_right) - max(left, block_left))
+                       * max(0.0, min(bottom, block_bottom) - max(top, block_top)))
+            coverage = overlap / area
+            block_area = max(1.0, block_right - block_left) * max(1.0, block_bottom - block_top)
+            if coverage < 0.45:
+                continue
+            key = (coverage, overlap / block_area)
+            if best is None or key > best[0]:
+                best = (key, text)
+        if best is not None:
+            candidate["description"] = best[1][:400]
+
+
+def _is_candidate_description(page_info: dict, block_box, text: str) -> bool:
+    """Return whether a text block is a selected image's hidden description."""
+    normalized = " ".join(str(text or "").split())
+    if len(normalized) < 60:
+        return False
+    for candidate in page_info.get("candidates", []):
+        if not isinstance(candidate, dict) or candidate.get("type") != "raster":
+            continue
+        description = " ".join(str(candidate.get("description") or "").split())
+        if len(description) < 60:
+            continue
+        comparable = description[:80].strip()
+        if not comparable or not normalized.startswith(comparable[:60]):
+            continue
+        candidate_box = candidate.get("bbox")
+        if not isinstance(candidate_box, (list, tuple)) or len(candidate_box) != 4:
+            continue
+        try:
+            left, top, right, bottom = (float(value) for value in candidate_box)
+            block_left, block_top, block_right, block_bottom = (
+                float(value) for value in block_box)
+        except (TypeError, ValueError):
+            continue
+        candidate_area = max(1.0, right - left) * max(1.0, bottom - top)
+        block_area = max(1.0, block_right - block_left) * max(1.0, block_bottom - block_top)
+        overlap = (max(0.0, min(right, block_right) - max(left, block_left))
+                   * max(0.0, min(bottom, block_bottom) - max(top, block_top)))
+        if overlap / candidate_area >= 0.45 and overlap / block_area >= 0.35:
+            return True
+    return False
+
+
+def _contains_box(outer, inner) -> bool:
+    return (outer[0] <= inner[0] and outer[1] <= inner[1]
+            and inner[2] <= outer[2] and inner[3] <= outer[3])
+
+
+def _boxes_touch(first, second) -> bool:
+    return not (first[2] < second[0] or second[2] < first[0]
+                or first[3] < second[1] or second[3] < first[1])
 
 
 def scan_background_candidate_ids(page_info: dict) -> set[str]:
@@ -360,6 +452,7 @@ def inspect_pdf_page(page, page_index: int) -> dict[str, Any]:
     except Exception:
         warnings.append("本页文字坐标提取不完整，请对照原页核对。")
 
+    _attach_candidate_descriptions(candidates, text_blocks)
     if full_page_image:
         warnings.append("检测到接近整页的图片，须从原页识别独立插图，不能把整页当作配图。")
     return {
@@ -539,24 +632,6 @@ def refine_figure_bbox(page_info: dict, bbox, candidate_ids: list[str]) -> dict[
     if not isinstance(candidate_ids, list) or any(not isinstance(identifier, str) for identifier in candidate_ids):
         return {"bbox": list(original), "warnings": ["插图候选标识无效，未自动扩大裁框。"]}
 
-    # First validate all references. Padding must not accidentally make a tiny
-    # half-covered or unknown candidate appear to pass a later coverage check.
-    named_boxes = []
-    invalid_reference = False
-    for identifier in dict.fromkeys(candidate_ids):
-        records = candidates.get(identifier, [])
-        candidate_box = evidence_box(records[0].get("bbox")) if len(records) == 1 else None
-        if candidate_box is None:
-            warnings.append(f"候选 {identifier} 不存在、标识不唯一或坐标无效，未自动扩大裁框。")
-            invalid_reference = True
-        elif overlap(original, candidate_box) / area(candidate_box) < 0.75:
-            warnings.append(f"裁框未覆盖候选 {identifier} 的 75%，不能自动补成完整插图。")
-            invalid_reference = True
-        else:
-            named_boxes.append((identifier, candidate_box))
-    if invalid_reference:
-        return {"bbox": list(original), "warnings": warnings}
-
     texts = []
     option_label_boxes = set()
     for block in page_info.get("text_blocks", []):
@@ -565,6 +640,8 @@ def refine_figure_bbox(page_info: dict, bbox, candidate_ids: list[str]) -> dict[
         block_box = evidence_box(block.get("bbox"))
         text = str(block.get("text") or "").strip()
         if block_box is None or not text:
+            continue
+        if _is_candidate_description(page_info, block_box, text):
             continue
         # A./B./C./D. are native option markers outside an embedded image,
         # sometimes merged into one text block across two columns. They must
@@ -585,21 +662,85 @@ def refine_figure_bbox(page_info: dict, bbox, candidate_ids: list[str]) -> dict[
         if prose and overlap(original, block_box) > 0:
             warnings.append("裁框与原生正文相交，未按正文范围扩大，请核对是否包含题干或遗漏图内说明。")
 
+    def contains_prose_slab(candidate_box):
+        # A background slab or table frame can carry several prose blocks.
+        # Exact native candidates are trustworthy only when they are not a
+        # proxy for the surrounding text column.
+        return sum(1 for block_box, prose in texts
+                   if prose and _contains_box(candidate_box, block_box)) >= 2
+
+    # First validate all references. A candidate the model truly points at is
+    # authoritative geometry: adopt its full native extent instead of growing
+    # the model's rough box within a small margin. Unknown or implausible
+    # references keep the original behaviour.
+    snap_boxes = []
+    invalid_reference = False
+    for identifier in dict.fromkeys(candidate_ids):
+        records = candidates.get(identifier, [])
+        candidate_box = evidence_box(records[0].get("bbox")) if len(records) == 1 else None
+        if candidate_box is None:
+            warnings.append(f"候选 {identifier} 不存在、标识不唯一或坐标无效，未自动扩大裁框。")
+            invalid_reference = True
+            continue
+        covered = overlap(original, candidate_box) / area(candidate_box)
+        inside = overlap(original, candidate_box) / area(original)
+        # A crop that already covers most of a named candidate is a rough box
+        # for that exact graphic: adopt the native extent. A crop that is
+        # merely inside a candidate is the half-figure case, but only when the
+        # candidate is not several times larger than the requested figure.
+        if covered >= 0.55 or (inside >= 0.70 and area(candidate_box) <= area(original) * 2.5 + 1e-6):
+            if contains_prose_slab(candidate_box):
+                warnings.append(f"候选 {identifier} 覆盖了整段正文，未按该候选吸附裁框。")
+                invalid_reference = True
+            else:
+                snap_boxes.append((identifier, candidate_box))
+        else:
+            warnings.append(f"裁框未覆盖候选 {identifier} 的 75%，不能自动补成完整插图。")
+            invalid_reference = True
+    if not candidate_ids and not invalid_reference:
+        # A model that forgot to name candidates should still benefit from one
+        # unambiguous native extent covering most of its box.
+        auto = []
+        for identifier, records in candidates.items():
+            candidate_box = evidence_box(records[0].get("bbox")) if len(records) == 1 else None
+            if candidate_box is None or contains_prose_slab(candidate_box):
+                continue
+            if overlap(original, candidate_box) / area(candidate_box) >= 0.60:
+                auto.append((identifier, candidate_box))
+        if len(auto) == 1:
+            snap_boxes.append(auto[0])
+    if invalid_reference:
+        return {"bbox": list(original), "warnings": warnings}
+
     def crosses_prose(proposed):
         return any(prose and overlap(proposed, block_box) > overlap(original, block_box) + 1e-6
                    for block_box, prose in texts)
 
-    for identifier, candidate_box in named_boxes:
-        proposed = union(current, candidate_box)
-        if proposed == current:
-            continue
-        if not bounded(proposed):
-            warnings.append(f"补全候选 {identifier} 超出有限扩张范围，未自动补全，请核对裁框。")
-        elif crosses_prose(proposed):
-            warnings.append(f"补全候选 {identifier} 会跨入原生正文，未自动补全，请核对裁框。")
-        else:
-            current = proposed
-            warnings.append(f"已按原生候选 {identifier} 补全被裁去的小幅边缘。")
+    snapped = False
+    if snap_boxes:
+        # Native extent wins over the model's rough box. Group only candidates
+        # that touch each other so four strips around a centre box cannot be
+        # chained into one oversized slab.
+        clusters = []
+        for identifier, candidate_box in snap_boxes:
+            touching = [cluster for cluster in clusters
+                        if any(_boxes_touch(candidate_box, other) for _, other in cluster)]
+            merged = [(identifier, candidate_box)]
+            for cluster in touching:
+                merged.extend(cluster)
+                clusters.remove(cluster)
+            clusters.append(merged)
+        best = max(clusters, key=lambda cluster: sum(overlap(original, box) for _, box in cluster))
+        proposed = best[0][1]
+        for _, candidate_box in best[1:]:
+            proposed = union(proposed, candidate_box)
+        if area(proposed) > area(original) * 10 or area(proposed) > MAX_FIGURE_AREA_RATIO * 1_000_000:
+            proposed = max((box for _, box in best), key=lambda box: overlap(original, box))
+        current = proposed
+        snapped = True
+        names = "、".join(identifier for identifier, _ in best)
+        notes = [f"已按原生候选 {names} 吸附完整图形边界（不再限于小幅补边）。"]
+        warnings.extend(notes)
 
     label_repairs = 0
     for block_box, prose in texts:
@@ -610,10 +751,12 @@ def refine_figure_bbox(page_info: dict, bbox, candidate_ids: list[str]) -> dict[
         proposed = union(current, block_box)
         if proposed == current:
             continue
-        extra_x = max(0, original[0] - proposed[0], proposed[2] - original[2])
-        extra_y = max(0, original[1] - proposed[1], proposed[3] - original[3])
+        base = current if snapped else original
+        extra_x = max(0, base[0] - proposed[0], proposed[2] - base[2])
+        extra_y = max(0, base[1] - proposed[1], proposed[3] - base[3])
         if (
-            not bounded(proposed)
+            (not snapped and not bounded(proposed))
+            or (snapped and area(proposed) > MAX_FIGURE_AREA_RATIO * 1_000_000)
             or extra_x > min(32, (original[2] - original[0]) * 0.2)
             or extra_y > min(32, (original[3] - original[1]) * 0.2)
             or crosses_prose(proposed)
@@ -636,7 +779,7 @@ def refine_figure_bbox(page_info: dict, bbox, candidate_ids: list[str]) -> dict[
                   min(1000, current[2] + margin_x), min(1000, current[3] + margin_y))
         touches_other_text = any(overlap(original, block_box) <= 0 and overlap(padded, block_box) > 0
                                  for block_box, _ in texts)
-        if bounded(padded) and not crosses_prose(padded) and not touches_other_text:
+        if (snapped or bounded(padded)) and not crosses_prose(padded) and not touches_other_text:
             current = padded
         else:
             warnings.append("小边距会超过扩张上限或碰到其他文字，已保留当前边界。")
@@ -875,6 +1018,24 @@ def _anchor_positions(text: str, before: str, after: str) -> list[int]:
     return positions
 
 
+_QUESTION_HEADING = re.compile(r"^[ \t]*(\d{1,3})[.．、](?!\d)")
+
+
+def _question_heading_positions(text: str, fragment: str) -> list[int]:
+    """Find a question heading when column reordering inverted the anchors.
+
+    Native two-column extraction can place a figure's question heading before
+    its surrounding prose even though the figure is physically above the
+    question. Only an exact, unique heading number is accepted here.
+    """
+    match = _QUESTION_HEADING.match(str(fragment or ""))
+    if not match:
+        return []
+    number = match.group(1)
+    pattern = re.compile(rf"(?m)^[ \t]*{re.escape(number)}[.．、](?!\d)")
+    return [position.start() for position in pattern.finditer(text)]
+
+
 def _inside_markdown_table(text: str, position: int) -> bool:
     """A new line inside a pipe-table cell would silently destroy its row."""
     line_start = text.rfind("\n", 0, position) + 1
@@ -932,6 +1093,17 @@ def apply_figure_anchors(markdown: str, figures: list[dict]) -> dict[str, Any]:
             reason = "插图缺少非空的原文位置片段。"
         else:
             positions = _anchor_positions(markdown, before, after)
+            if not positions and before.strip() and after.strip():
+                # A model may select the correct question while the native
+                # page text stores that question's tail before its heading.
+                # In that case only the unique heading is a safe insertion
+                # point; never guess from a generic prose fragment.
+                headings = _question_heading_positions(markdown, after)
+                before_hits = list(_occurrences(markdown, before))
+                if (len(headings) == 1 and len(before_hits) == 1
+                        and before_hits[0] > headings[0]
+                        and len(after.strip()) > 8):
+                    positions = headings
             if not positions:
                 reason = "原文片段未精确匹配，或两个片段之间并非只有空白。"
             elif len(positions) != 1:

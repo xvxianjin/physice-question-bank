@@ -339,6 +339,85 @@ def _has_scrambled_sparse_table(markdown: str) -> bool:
     return False
 
 
+def _native_layout_loss_reasons(markdown: str) -> list[str]:
+    """Detect proved reading-order loss before trusting a native transcript.
+
+    Two-column exam pages can be emitted as a table or with question headings
+    interleaved across columns. These are layout failures, not math repair
+    candidates: formula patching cannot recover a question whose prose was
+    reordered. Only a clear heading inversion or a question body spread over
+    multiple prose cells is rejected.
+    """
+    raw = str(markdown or "")
+    if not raw.strip():
+        return []
+    reasons = []
+    text = _native_diagnostic_text(raw)
+    headings = []
+    for match in re.finditer(r"(?m)^[ \t]*(\d{1,3})[.．、](?!\d)\s+", text):
+        line_start = text.rfind("\n", 0, match.start()) + 1
+        line_end = text.find("\n", match.start())
+        if line_end < 0:
+            line_end = len(text)
+        line = text[line_start:line_end].lstrip()
+        if line.startswith("|"):
+            continue
+        headings.append(int(match.group(1)))
+    if len(headings) >= 3:
+        for previous, current in zip(headings, headings[1:]):
+            # A small adjacent inversion can still be a new numbered list.
+            # Require a same-page question sequence, not a reset after a gap.
+            if 0 < previous - current <= 3:
+                reasons.append("原生提取的题号顺序交错，双栏或表格内容可能被打乱，需整页识别。")
+                break
+    if re.search(r"\(\s*\d{1,3}\s+\d{1,3}\s*\)\s*(?:\*?[A-Za-z]|\$)", text):
+        reasons.append("原生提取把括号内的分式压平成两个裸数字，公式结构不可靠，需整页识别。")
+    for line in text.splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        cells = _table_cells(line)
+        if len(cells) < 2 or not any(_QUESTION_IN_CELL.search(cell) for cell in cells):
+            continue
+        if sum(len(cell) >= 25 for cell in cells) >= 2:
+            reasons.append("原生提取把题目正文放入多个表格单元格，题目与选项顺序不可靠，需整页识别。")
+            break
+    return list(dict.fromkeys(reasons))
+
+
+def _requires_full_page_vision(markdown: str) -> bool:
+    """A regional patch cannot restore cross-column reading order."""
+    return bool(_native_layout_loss_reasons(markdown) or _has_scrambled_sparse_table(markdown))
+
+
+def _formula_block_loss_reasons(page, markdown: str) -> list[str]:
+    """Detect multiple visual formula blocks that native text cannot locate.
+
+    One ambiguous block can be a harmless duplicate. Several unmatched blocks
+    with a substantial matched set are a page-level transcript failure; a
+    block-only repair would keep flattened fractions in the question text.
+    """
+    if page is None or not str(markdown or "").strip():
+        return []
+    try:
+        from mathbank.pdf_formula_review import _formula_span, detect_formula_blocks
+
+        blocks = detect_formula_blocks(page, page_index=int(page.number))
+        matched = unmatched = 0
+        for block in blocks:
+            if (block.get("kind") == "vector" and not block.get("alnum")
+                    and not block.get("context_before")):
+                continue
+            if _formula_span(markdown, block) is None:
+                unmatched += 1
+            else:
+                matched += 1
+        if unmatched >= 3 and unmatched * 2 >= matched:
+            return ["原生页面有多个分式或上下标块无法在正文中唯一定位，需整页识别。"]
+    except Exception:
+        return []
+    return []
+
+
 def native_text_quality_reasons(markdown: str) -> list[str]:
     """Return content-free OCR reasons; never guess or repair mathematical glyphs.
 
@@ -367,6 +446,7 @@ def native_text_quality_reasons(markdown: str) -> list[str]:
         reasons.append("原生提取的否定斜线与关系符分离，需对照原页确认不属于或非包含等条件。")
     if _has_scrambled_sparse_table(text):
         reasons.append("原生正文被错排为宽表，出现题号跨列错序或小问片段混排。")
+    reasons.extend(_native_layout_loss_reasons(raw))
     for line in text.splitlines():
         plain = re.sub(r"[*_]", "", line)
         # PDF Inspector can place the sign, its name and relation in different
@@ -394,7 +474,7 @@ def native_text_quality_reasons(markdown: str) -> list[str]:
         if re.search(r"àáâ|èéê", line) or _FONT_GLYPH_WRAPPER.search(line):
             reasons.append("原生数学表达式含未正确解码的括号、绝对值或其他字体符号。")
             break
-    return reasons
+    return list(dict.fromkeys(reasons))
 
 
 def _multicolumn_table_order_reasons(markdown: str, headings: list[dict], rows: list[dict]) -> list[str]:
@@ -1001,6 +1081,7 @@ def _extract_fitz_pages(
                     "page_index": page_index,
                     "markdown": text,
                     "needs_ocr": bool(quality_reasons),
+                    "needs_full_vision": _requires_full_page_vision(text),
                     "source": "pymupdf",
                     "quality_reasons": quality_reasons,
                 })
@@ -1083,6 +1164,7 @@ def _repair_native_pages(file_bytes: bytes, pages: List[Dict[str, Any]], *, docu
                 markdown = result.get("markdown")
                 remaining = native_text_quality_reasons(markdown) if isinstance(markdown, str) else []
                 if isinstance(markdown, str):
+                    remaining.extend(_formula_block_loss_reasons(document[index], markdown))
                     visible_reasons = _native_paint_visibility_reasons(
                         markdown, document[index], evidence=(paint_evidence or {}).get(index))
                     remaining.extend(visible_reasons)
@@ -1104,7 +1186,8 @@ def _repair_native_pages(file_bytes: bytes, pages: List[Dict[str, Any]], *, docu
                 if complete:
                     page["original_markdown"] = page["markdown"]
                     page.update(markdown=markdown.strip(), needs_ocr=False,
-                                quality_reasons=[], source="native-math-repaired")
+                                needs_full_vision=False, quality_reasons=[],
+                                source="native-math-repaired")
     except Exception:
         # An unreadable PDF or unavailable optional extractor keeps the exact
         # pre-repair result. No incomplete page can enter the trusted text.
@@ -1163,6 +1246,10 @@ def _inspect_and_extract_pdf(
                 quality_reasons = native_text_quality_reasons(markdown)
                 physical_page = (native_document[page_index] if native_document is not None
                                  and 0 <= page_index < len(native_document) else None)
+                formula_loss_reasons = _formula_block_loss_reasons(physical_page, markdown)
+                quality_reasons.extend(formula_loss_reasons)
+                layout_loss = (_requires_full_page_vision(markdown)
+                               or bool(formula_loss_reasons))
                 if physical_page is not None:
                     paint_evidence[page_index] = _native_covered_text_evidence(physical_page)
                 quality_reasons.extend(_native_position_quality_reasons(
@@ -1180,6 +1267,7 @@ def _inspect_and_extract_pdf(
                     "page_index": page_index,
                     "markdown": markdown,
                     "needs_ocr": needs_ocr,
+                    "needs_full_vision": layout_loss,
                     "source": "pdf-inspector",
                     "quality_reasons": quality_reasons,
                 })
@@ -1221,6 +1309,7 @@ def _inspect_and_extract_pdf(
         if is_text_type and markdown and len(markdown) >= 30 and not has_encoding_issues and not pages_needing_ocr:
             legacy_page = page_indices[0] if page_indices else 0
             has_loss = _has_math_formula_loss(markdown, legacy_page, tmp_path)
+            layout_loss = _requires_full_page_vision(markdown)
             quality_reasons = native_text_quality_reasons(markdown)
             # Legacy Markdown can contain multiple pages, so its first page
             # cannot establish where every component belongs.
@@ -1244,6 +1333,7 @@ def _inspect_and_extract_pdf(
                 "page_index": legacy_page,
                 "markdown": markdown,
                 "needs_ocr": bool(quality_reasons),
+                "needs_full_vision": layout_loss,
                 "source": "pdf-inspector-legacy",
                 "quality_reasons": quality_reasons,
             }]

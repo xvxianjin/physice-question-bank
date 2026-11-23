@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from copy import deepcopy
+from collections import Counter
 import math
 import os
 import re
@@ -51,9 +52,222 @@ def describe_figure_slots(source: str, page_index: int) -> list[dict]:
     return slots
 
 
+_OPTION_SLOT = re.compile(r"\(([A-H])\)|(?:^|\s)([A-H])[.．、:：]")
+
+
+def _slot_option_label(slot: dict) -> str:
+    """Return the nearest option marker immediately before a figure slot."""
+    matches = list(_OPTION_SLOT.finditer(str(slot.get("before") or "")))
+    if not matches:
+        return ""
+    marker = matches[-1]
+    return marker.group(1) or marker.group(2)
+
+
+def _figure_reading_order(figures: list[dict]) -> list[int]:
+    """Order boxes by column first, then top-to-bottom inside each column."""
+    centres = sorted(((figure["bbox"][0] + figure["bbox"][2]) / 2, index)
+                     for index, figure in enumerate(figures))
+    columns = []
+    for centre, index in centres:
+        if not columns or centre - columns[-1][-1][0] > 120:
+            columns.append([(centre, index)])
+        else:
+            columns[-1].append((centre, index))
+    ordered = []
+    for column in columns:
+        ordered.extend(index for _, index in sorted(column, key=lambda item: figures[item[1]]["bbox"][1]))
+    return ordered
+
+
+def _bind_option_slots(figures: list[dict], page_info: dict, notes: list[str]) -> None:
+    """Bind A-E slots deterministically when the model left the mapping open.
+
+    Only a complete one-to-one option set is bound. Any partial mapping,
+    non-option slot, or count mismatch keeps the model's own evidence.
+    """
+    slots = [slot for slot in page_info.get("figure_slots", []) if _slot_option_label(slot)]
+    labels = [_slot_option_label(slot) for slot in slots]
+    if len(slots) < 2 or len(figures) != len(slots) or len(set(labels)) != len(labels):
+        return
+    known = {slot["id"] for slot in slots}
+    assigned = [figure.get("slot_id") or "" for figure in figures]
+    complete = all(identifier in known for identifier in assigned) and len(set(assigned)) == len(assigned)
+    if complete:
+        return
+    for index, slot in zip(_figure_reading_order(figures), slots):
+        figures[index]["slot_id"] = slot["id"]
+    notes.append("已按选项阅读顺序绑定 " + "、".join(labels) + " 的配图占位。")
+
+
+_DESCRIPTION_STOPWORDS = frozenset({
+    "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
+    "from", "by", "as", "at", "is", "are", "be", "been", "was", "were",
+    "this", "that", "these", "those", "it", "its", "into", "their", "there",
+    "where", "which", "who", "whom", "whose", "when", "while", "before",
+    "after", "above", "below", "left", "right", "top", "bottom", "figure",
+    "figures", "shown", "shows", "consists", "consist", "labeled", "label",
+    "labels", "small", "large", "two", "three", "one", "other", "per",
+    "second", "each", "contains", "titled", "between", "near", "along",
+    "towards", "pointing", "points", "point", "horizontal", "vertical",
+    "side", "portion", "located", "outside", "inside",
+})
+
+
+def _description_words(text: str) -> Counter:
+    words = [
+        word for word in re.findall(r"[A-Za-z][A-Za-z0-9-]+", str(text).lower())
+        if len(word) >= 3 and word not in _DESCRIPTION_STOPWORDS
+    ]
+    counts = Counter(words)
+    counts.update(first + second for first, second in zip(words, words[1:]))
+    return counts
+
+
+def _bind_described_figures_to_slots(
+    figures: list[dict], page_info: dict, source: str, notes: list[str],
+) -> None:
+    """Correct a clear slot swap using hidden figure descriptions and stems.
+
+    The model can mistake physical top-to-bottom order for reading order. Only
+    apply a closed permutation among figures whose own descriptions strongly
+    prefer another existing slot; ambiguous matches keep the model's mapping.
+    """
+    slots = [slot for slot in page_info.get("figure_slots", []) if isinstance(slot, dict)]
+    if len(slots) < 2 or not isinstance(source, str) or not source:
+        return
+    descriptions = {candidate["id"]: str(candidate.get("description") or "")
+                    for candidate in page_info.get("candidates", [])
+                    if isinstance(candidate, dict) and candidate.get("id")}
+    contexts = []
+    for index, slot in enumerate(slots):
+        start = slot.get("end")
+        if not isinstance(start, int) or not 0 <= start <= len(source):
+            return
+        end = slots[index + 1].get("start") if index + 1 < len(slots) else len(source)
+        if not isinstance(end, int) or end < start:
+            return
+        contexts.append(_description_words(source[start:min(end, start + 2400)]))
+    if not any(contexts):
+        return
+    document_frequency = Counter(
+        word for context in contexts for word in set(context)
+    )
+    context_size = len(contexts)
+    slot_by_id = {slot["id"]: slot for slot in slots if isinstance(slot.get("id"), str)}
+    moves = {}
+    for figure in figures:
+        current = figure.get("slot_id")
+        if current not in slot_by_id:
+            continue
+        description = next((descriptions[identifier]
+                            for identifier in figure.get("candidate_ids", [])
+                            if descriptions.get(identifier)), "")
+        if not description:
+            continue
+        words = _description_words(description)
+        if len(words) < 3:
+            continue
+        scores = []
+        for slot, context in zip(slots, contexts):
+            score = sum(
+                count * context[word]
+                * (math.log((context_size + 1) / (1 + document_frequency[word])) + 1)
+                for word, count in words.items()
+            )
+            scores.append((score, slot["id"]))
+        current_score = next((score for score, identifier in scores if identifier == current), 0.0)
+        best_score, best_slot = max(scores, key=lambda item: item[0])
+        if (best_slot == current or best_score < 6
+                or best_score < current_score * 2
+                or best_score - current_score < 4):
+            continue
+        moves[figure["id"]] = (figure, current, best_slot)
+    if not moves:
+        return
+    targets = [target for _figure, _current, target in moves.values()]
+    current_slots = [current for _figure, current, _target in moves.values()]
+    if len(set(targets)) != len(targets) or set(targets) != set(current_slots):
+        return
+    for figure, current, target in moves.values():
+        figure["slot_id"] = target
+        figure["slot_rebound"] = {"from": current, "to": target, "basis": "hidden_description"}
+    notes.append(f"已按原生图片说明与相邻题干核对，校正 {len(moves)} 幅图的挂接位置。")
+
+
 def _is_processing_note(message: str) -> bool:
     return message.startswith(("已按原生候选 ", "已补全 ", "小边距会超过扩张上限或碰到其他文字，已保留当前边界。",
                                "检测到接近整页的图片，须从原页识别独立插图"))
+
+
+def _embedded_raster_text(info: dict, crop, block) -> bool:
+    """A figure's hidden description is not independent body prose.
+
+    Some tagged PDFs expose image alternative text through the block extractor.
+    That text can cover the native raster box almost completely while carrying
+    no visible body paragraph. Ignore only blocks that are themselves confined
+    to a native raster already selected by the crop; ordinary prose outside the
+    raster still triggers the prose guard.
+    """
+    crop_left, crop_top, crop_right, crop_bottom = crop
+    block_left, block_top, block_right, block_bottom = block
+    block_area = max(1.0, block_right - block_left) * max(1.0, block_bottom - block_top)
+    for candidate in info.get("candidates", []):
+        if not isinstance(candidate, dict) or candidate.get("type") != "raster":
+            continue
+        candidate_box = candidate.get("bbox")
+        if not isinstance(candidate_box, (list, tuple)) or len(candidate_box) != 4:
+            continue
+        try:
+            left, top, right, bottom = (float(value) for value in candidate_box)
+        except (TypeError, ValueError):
+            continue
+        candidate_area = max(1.0, right - left) * max(1.0, bottom - top)
+        crop_overlap = (max(0.0, min(crop_right, right) - max(crop_left, left))
+                        * max(0.0, min(crop_bottom, bottom) - max(crop_top, top)))
+        block_overlap = (max(0.0, min(block_right, right) - max(block_left, left))
+                         * max(0.0, min(block_bottom, bottom) - max(block_top, top)))
+        if (crop_overlap / candidate_area >= 0.85
+                and block_overlap / candidate_area >= 0.85
+                and block_overlap / block_area >= 0.6):
+            return True
+    return False
+
+
+def _prose_overlap_reason(info: dict, bbox) -> str:
+    """Reject a crop that is mainly a full prose block, not a figure.
+
+    A scanned page can expose both the diagram and the question paragraph as
+    raster candidates. Label-sized text inside a diagram remains valid; only a
+    substantial paragraph covered by the crop is rejected.
+    """
+    try:
+        left, top, right, bottom = (float(value) for value in bbox)
+    except (TypeError, ValueError):
+        return ""
+    for block in info.get("text_blocks", []):
+        coords = block.get("bbox")
+        text = str(block.get("text") or "").strip()
+        if (not isinstance(coords, (list, tuple)) or len(coords) != 4
+                or len(text) < 60):
+            continue
+        try:
+            block_left, block_top, block_right, block_bottom = (float(value) for value in coords)
+        except (TypeError, ValueError):
+            continue
+        if _embedded_raster_text(info, (left, top, right, bottom),
+                                 (block_left, block_top, block_right, block_bottom)):
+            continue
+        width = max(1.0, block_right - block_left)
+        height = max(1.0, block_bottom - block_top)
+        overlap_x = max(0.0, min(right, block_right) - max(left, block_left))
+        overlap_y = max(0.0, min(bottom, block_bottom) - max(top, block_top))
+        if overlap_x * overlap_y / (width * height) < 0.75:
+            continue
+        if (len(re.findall(r"[A-Za-z]{2,}", text)) >= 10
+                or len(re.findall(r"[\u4e00-\u9fff]", text)) >= 25):
+            return "候选框主要包含整段正文，已跳过，不作为配图。"
+    return ""
 
 
 def _review_explanations(reasons: list[str]) -> list[str]:
@@ -299,6 +513,7 @@ def _validate_layout(result: dict, page_info: dict, *, notes: list[str] | None =
             if note:
                 target = warnings if re.search(r"无法|遗漏|缺失|错乱|失败|不完整|待核对", str(note)) else notes
                 target.append(str(note)[:500])
+    _bind_option_slots(figures, page_info, notes)
     return figures, list(dict.fromkeys(warnings))
 
 
@@ -494,7 +709,7 @@ def enrich_pdf_with_figures(
                 or mineru_figure_source.source_sha256 != sha256(file_bytes).hexdigest()):
             raise ValueError("MinerU 图框未绑定到当前 PDF 原件。")
     texts = list(page_texts)
-    report = {"pages_checked": 0, "figures_extracted": 0, "figures_attached": 0,
+    report = {"pages_checked": 0, "figures_extracted": 0, "figures_rejected": 0, "figures_attached": 0,
               "unmatched_figures": 0, "visual_calls": 0, "skipped_pages": 0,
               "review_pages": 0, "warnings": [], "notes": [], "usage": {}, "joint_visual_calls": 0}
     pages, issues = [], []
@@ -575,6 +790,7 @@ def enrich_pdf_with_figures(
                 check_cancelled()
                 figures, warnings = _validate_layout(result, info, notes=page_notes)
                 page_warnings.extend(warnings)
+                _bind_described_figures_to_slots(figures, info, source, page_notes)
                 report["pages_checked"] += 1
                 for figure in figures:
                     check_cancelled()
@@ -633,6 +849,11 @@ def enrich_pdf_with_figures(
                                     affected["review_required"] = True
                                     affected["review_reasons"].append(message)
                                 page_warnings.append(message)
+                    prose_reason = _prose_overlap_reason(info, figure["bbox"])
+                    if prose_reason:
+                        page_notes.append(prose_reason)
+                        report["figures_rejected"] += 1
+                        continue
                     if figure.get("slot_id"):
                         slot = next(slot for slot in info["figure_slots"] if slot["id"] == figure["slot_id"])
                         # The model selects a server-issued ID. The server owns
@@ -698,6 +919,15 @@ def enrich_pdf_with_figures(
             page_state["notes"] = list(dict.fromkeys(page_notes))
             report["notes"].extend(f"第 {page_index + 1} 页：{message}" for message in page_state["notes"])
             pages.append(page_state)
+    # Late-safe anchor fallbacks can attach a figure after its page report was
+    # counted. Recompute from the retained page state so the dashboard never
+    # says an image is pending while the card already contains it.
+    report["figures_attached"] = sum(
+        bool(figure.get("attached")) for page in pages for figure in page.get("figures", [])
+    )
+    report["unmatched_figures"] = sum(
+        not figure.get("attached") for page in pages for figure in page.get("figures", [])
+    )
     return {"schema": LAYOUT_SCHEMA, "page_texts": texts, "pages": pages,
             "diagnostics": report, "issues": issues}
 

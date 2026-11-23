@@ -29,6 +29,68 @@ def test_scrambled_sparse_table_is_not_trusted_as_native_question_text():
     assert any("题号跨列" in reason for reason in reasons)
 
 
+def test_interleaved_two_column_question_order_requires_full_page_vision():
+    markdown = (
+        "17. A wheel question.\n"
+        "(A) first\n"
+        "19. An arrow question.\n"
+        "(D) fourth\n"
+        "18. A beam question.\n"
+        "20. A collision question."
+    )
+    reasons = helper.native_text_quality_reasons(markdown)
+    assert any("题号顺序交错" in reason for reason in reasons)
+
+
+def test_question_body_spread_over_prose_table_requires_full_page_vision():
+    markdown = (
+        "|inertia (A) (B) (C) (D) (E)|35. A circular platform has a radius R and rotational inertia I. "
+        "A child of mass m runs tangentially with speed v and jumps on the outer edge. "
+        "The platform rotates around a fixed pivot with negligible friction and an initial angular velocity. "
+        "When the child is standing on the outer edge, the new angular velocity is|"
+        "R and rotational The platform rotates around a fixed pivot at its center with negligible friction.||\n"
+        "|---|---|---|---|"
+    )
+    reasons = helper.native_text_quality_reasons(markdown)
+    assert any("题目正文放入多个表格单元格" in reason for reason in reasons)
+
+
+def test_flattened_parenthesized_fraction_requires_full_page_vision():
+    markdown = (
+        "19. The uniform thin rod shown above has mass $m$ and length. "
+        "The moment of inertia of the rod about its center is (1 12)$m^{2}$."
+    )
+    reasons = helper.native_text_quality_reasons(markdown)
+    assert any("两个裸数字" in reason for reason in reasons)
+
+
+def test_multiple_unmatched_formula_blocks_require_full_page_vision(monkeypatch):
+    import mathbank.pdf_formula_review as review
+
+    blocks = [{"kind": "glyph", "alnum": "x", "context_before": ""} for _ in range(5)]
+    monkeypatch.setattr(review, "detect_formula_blocks", lambda *args, **kwargs: blocks)
+    monkeypatch.setattr(
+        review,
+        "_formula_span",
+        lambda text, block: (0, 1, "", "") if block is blocks[0] else None,
+    )
+    reasons = helper._formula_block_loss_reasons(SimpleNamespace(number=0), "text")
+    assert any("多个分式" in reason for reason in reasons)
+
+
+def test_one_ambiguous_formula_block_does_not_force_full_page_vision(monkeypatch):
+    import mathbank.pdf_formula_review as review
+
+    blocks = [{"kind": "glyph", "alnum": "x", "context_before": ""} for _ in range(6)]
+    monkeypatch.setattr(review, "detect_formula_blocks", lambda *args, **kwargs: blocks)
+    monkeypatch.setattr(
+        review,
+        "_formula_span",
+        lambda text, block: None if block is blocks[0] else (0, 1, "", ""),
+    )
+    assert helper._formula_block_loss_reasons(SimpleNamespace(number=0), "text") == []
+
+
 def test_two_question_paragraphs_spliced_into_wide_columns_are_rejected():
     long_header = "18．如图用一段长为三十二米的篱笆围成一个矩形菜园其中一面靠墙墙长十四米若矩"
     markdown = table([
@@ -167,7 +229,9 @@ def test_per_page_gate_preserves_raw_evidence_and_only_routes_bad_pages(monkeypa
     assert result["pages_needing_ocr"] == [4]
     assert result["pages"][1]["markdown"] == corrupt
     assert result["pages"][1]["quality_reasons"]
+    assert result["pages"][1]["needs_full_vision"] is True
     assert result["pages"][0]["quality_reasons"] == []
+    assert result["pages"][0]["needs_full_vision"] is False
     assert "MATHBANK_PDF_PAGE:3" in result["markdown"]
     assert "MATHBANK_PDF_PAGE:5" not in result["markdown"]
     assert capsys.readouterr().out == ""

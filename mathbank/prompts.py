@@ -139,6 +139,8 @@ def build_pdf_page_vision_prompt(page_info: dict) -> str:
         "对于矢量图、没有原生候选或需要合并多个区域的图，bbox仍须提供完整坐标。"
         "若一张候选位图包含相邻图(1)/图(2)，优先完整保留为同一图簇，不能为拆分而裁掉图注。"
         "候选仅用于定位提示，公式、底纹和表格边框不是插图；不能因为没有候选就遗漏矢量图。"
+        "候选中的description是PDF隐藏图片说明，只用于判断图片与题干对应关系，"
+        "不能抄入正文、替代可见图像或冒充图框已核验。"
         "凡正文或解析提到图，先定位包含坐标轴、曲线和单位的独立墨迹，再就着该图紧框。"
         "不要裁到接在图后面的结论、题干或另一道题的答案框。"
         "已转为可编辑tabular的表格不再重复截图。所有候选应通过candidate_ids或ignored_candidates解释。"
@@ -152,7 +154,7 @@ def build_pdf_page_vision_prompt(page_info: dict) -> str:
 
 def build_pdf_page_fragments_prompt(page_info: dict) -> str:
     """Transcribe one page once, with explicit local question/answer fragments."""
-    candidates = [{key: candidate[key] for key in ("id", "bbox", "type", "native_box_eligible")
+    candidates = [{key: candidate[key] for key in ("id", "bbox", "type", "native_box_eligible", "description")
                    if key in candidate} for candidate in page_info.get("candidates", [])
                   if isinstance(candidate, dict)]
     return (
@@ -226,7 +228,7 @@ def build_pdf_layout_prompt(markdown: str, page_info: dict) -> str:
     # Native endpoint geometry belongs to server-side crop validation. Keep
     # its bounded evidence out of the paid prompt, as in joint page vision.
     candidates = [
-        {key: candidate[key] for key in ("id", "bbox", "type", "native_box_eligible")
+        {key: candidate[key] for key in ("id", "bbox", "type", "native_box_eligible", "description")
          if key in candidate}
         for candidate in page_info.get("candidates", [])
         if isinstance(candidate, dict)
@@ -258,6 +260,8 @@ def build_pdf_layout_prompt(markdown: str, page_info: dict) -> str:
         "最多 32 幅图。\n"
         "若figure_slots中有对应插图占位，优先返回它的slot_id，此时anchor_before/anchor_after留空。"
         "必须结合题干及A/B/C/D选项上下文选择slot_id，不能按候选ID顺序机械对应；每个占位只绑定一幅图。"
+        "候选中的description是PDF隐藏图片说明，只用于判断图片与题干对应关系，"
+        "不能抄入正文、替代可见图像或冒充图框已核验。"
         "没有匹配占位时，anchor_before/anchor_after 必须从 source_markdown 逐字复制（包括 LaTeX 反斜杠），"
         "建议各 15-100 字，二者在原文中相邻，中间只能有空白。至少一个非空，且组合定位唯一。"
         "选择题的图要定位到对应选项内，表格的图要定位到对应单元格内，正文图保持正文顺序。"

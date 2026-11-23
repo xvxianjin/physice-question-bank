@@ -41,7 +41,7 @@ FUNCTION_HASHES = {
 
 # Reviewed routing after the 2026-11-17 PDF workflow changes. The original
 # upstream digest above remains fixed for provenance.
-PDF_WORKFLOW_AST = "eac2053aa39419305dd9f1e42e738dad102d8e07c2a44364a7989b689710d8c3"
+PDF_WORKFLOW_AST = "2ccc683aa4ede31591311bbcfefb9b8b14659bb632f6c284ca1cd797761f838a"
 
 
 def _ast_key(node):
@@ -247,6 +247,30 @@ return parse_paper_text_internal(
                 and _ast_key(curriculum_arg.values[1])
                 == _ast_key(ast.parse("get_current_curriculum()", mode="eval").body))
         hybrid_calls[0].args[1] = ast.parse("get_current_curriculum()", mode="eval").body
+        # Reviewed native-page formula refinement runs before source_pages is
+        # built; removing it restores the upstream coordinator shape.
+        _replace_statement_block(node, '''
+native_local_indices = [
+    index for index in range(total_target_pages)
+    if index not in all_ocr_indices and index not in furniture_pages
+]
+if pdf_strategy != "force_ocr" and native_local_indices:
+    from mathbank.pdf_formula_review import refine_pdf_formulas
+    DOCUMENT_TASKS.update(
+        task_id, status="layout_analysis", progress=80,
+        log="正在核对原生页中的公式结构，无法确认的公式会保留待核对标记…",
+    )
+    refined = refine_pdf_formulas(
+        file_bytes, ocr_results, page_images, target_page_indices,
+        eligible_pages={target_page_indices[index] for index in native_local_indices},
+        check_cancelled=check_pdf_cancelled,
+        report_attempt=report_pdf_attempt,
+    )
+    ocr_results = refined["page_texts"]
+    if layout_result is not None:
+        layout_result["page_texts"] = list(ocr_results)
+    diagnostics["pdf_formula_refinement"] = refined["diagnostics"]
+''', "")
     elif node.name == "post_process_pdf_parsed_questions":
         _replace_statement_block(node, '''
 knowledge_catalog = (load_ai_knowledge_catalog() if any(
@@ -315,9 +339,12 @@ PDF_AUXILIARY_TOLERANCE_SHA256 = {
 }
 
 
-# Reviewed in the PDF test branch: guard corrupt choice grids and refine
-# figure crops from physical source evidence. Preserve older provenance above.
-PDF_FIDELITY_MODULE_SHA256 = {'pdf_figures.py': '0040446c7e9e3f0d3c2a52090041e7bbc038635c480e13f7def10fa933fc1c5a', 'pdf_inspector_helper.py': '73f30b1dc0f51f6cdc8767f0cf5cebb764b3822f449327c1fa46fa404987da94'}
+# Reviewed 2026-11-23: guard corrupt choice grids, refine figure crops from
+# physical source evidence and bind complete option picture slots in order.
+# The hidden-description rebind and prose-crop filter are part of this reviewed
+# figure round; the prompt additions below are reviewed in the same round.
+# Preserve older provenance above.
+PDF_FIDELITY_MODULE_SHA256 = {'pdf_figures.py': '691ad67deb531f9acf60e6024a9606b719d62ae49c7860a2147ec60bb2c14cc6', 'pdf_inspector_helper.py': '95b6ebec9398fdb6302dae31926bc80b04bf22c607a994e1cbb2cfc710d555de'}
 
 
 @pytest.mark.parametrize("filename", MODULE_HASHES)
@@ -369,7 +396,7 @@ PROMPT_HASHES = {
     "visual_fidelity": "48c66a4789adfe7317d41cae38a1f896c409fe138834d81e7adc990eadc05452",
     "structured_output": "0d6f1268827c7ddb8563e90ba9274a9bacdb2ac2cc3bfa3f3cdb20fc861258bd",
     "page_vision": "84a1fff5da490b94458e6989b8b8708fb48de72d946b67eebed1bcc01e567953",
-    "layout": "badaa41235ac862f14fe72fa3f668e7af3769844379da6d2ad507bb793b82b35",
+    "layout": "1785bc736fefc1b8fe83c5d6d263f4b902d1ce396598437f2a4f312b1f3c5f71",
     "parse_extract": "8932113bdb616d093643c90113b5f9cbf873f4df04e968c3aa1c1c33442e82e6",
     "parse_generate": "502b481838209420ca7b671219dafeaa82761728887c294f537c4928f43df1c8",
     "region_figures": "08c5141d98b8649d066544ac22be5744a404dba1395bd316b74bcfa18c7f9d7b",
@@ -418,6 +445,8 @@ def test_cloud_pdf_paid_prompt_outputs_match_original_golden(name):
                     "`knowledge` 必须为空字符串，表示整章待细分。")
         assert value.count(current) == 1
         value = value.replace(current, original)
-    expected = ("65d121a77b28a165e8fdc6241173f873eec660b6df51daa6f2319a40925d16b4"
+    # Reviewed 2026-11-23: page vision and layout prompts now state that PDF
+    # hidden image descriptions are binding evidence only, never body text.
+    expected = ("b4d1b8a75315263d0309b943051394fc34adfd59c2f7bbd137173e1657d74472"
                 if name == "page_vision" else PROMPT_HASHES[name])
     assert hashlib.sha256(value.encode("utf-8")).hexdigest() == expected

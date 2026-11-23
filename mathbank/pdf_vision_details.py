@@ -43,6 +43,7 @@ _NOTES = {
     "local_failure": "局部详情图生成未完成，已撤销本次新图并保留整页识图。",
 }
 _DESCRIPTOR_FIELDS = {"id", "page_index", "bbox", "actualdpi", "width", "height", "sha256", "path", "url"}
+_CTIME_CROSS_INTERFACE_TOLERANT = os.name == "nt"
 
 
 class _DetailUnavailable(ValueError):
@@ -81,6 +82,19 @@ def _stat_key(value) -> tuple:
     return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
 
 
+def _stat_compatible(value, snapshot: tuple) -> bool:
+    """Compare an open-handle stat with a path snapshot.
+
+    Windows can report a slightly different ``st_ctime_ns`` for the same file
+    depending on whether it was obtained from a descriptor or a path. Identity,
+    size and mtime must still match; content hashes are checked separately.
+    """
+    current = _stat_key(value) if hasattr(value, "st_dev") else tuple(value)
+    if current[:4] != snapshot[:4]:
+        return False
+    return _CTIME_CROSS_INTERFACE_TOLERANT or current[4] == snapshot[4]
+
+
 @dataclass(frozen=True)
 class _OwnedFile:
     path: Path
@@ -116,9 +130,9 @@ def _freeze_owned_file(path: Path, descriptor: int, expected: bytes) -> _OwnedFi
     snapshot, checksum = _read_snapshot(descriptor, expected=expected)
     _safe_directory(path.parent)
     current = path.lstat()
-    if not stat.S_ISREG(current.st_mode) or _stat_key(current) != snapshot:
+    if not stat.S_ISREG(current.st_mode) or not _stat_compatible(current, snapshot):
         raise ValueError("详情图路径已变化，不能确认归属。")
-    return _OwnedFile(path, snapshot, checksum)
+    return _OwnedFile(path, _stat_key(current), checksum)
 
 
 def _rollback(created: list[_OwnedFile]) -> None:
@@ -140,7 +154,7 @@ def _rollback(created: list[_OwnedFile]) -> None:
             # snapshot afterwards; inode alone can be immediately reused on Linux.
             _safe_directory(path.parent)
             current = path.lstat()
-            if (snapshot == owned.snapshot and checksum == owned.sha256
+            if (_stat_compatible(snapshot, owned.snapshot) and checksum == owned.sha256
                     and stat.S_ISREG(current.st_mode) and _stat_key(current) == owned.snapshot):
                 path.unlink()
         except (OSError, ValueError):
@@ -255,11 +269,14 @@ def render_pdf_detail_views(
             record_index = len(created)
             try:
                 identity = os.fstat(descriptor_fd)
+                path_identity = destination.lstat()
                 # Even dup/fdopen failure must leave a safely removable empty
                 # file. The pin keeps the original inode alive until write/flush
                 # has ended, including failures that leave a partial PNG.
-                initial = (_OwnedFile(destination, _stat_key(identity), hashlib.sha256(b"").hexdigest())
-                           if stat.S_ISREG(identity.st_mode) and identity.st_size == 0 else _OwnedFile(destination))
+                initial = (_OwnedFile(destination, _stat_key(path_identity), hashlib.sha256(b"").hexdigest())
+                           if stat.S_ISREG(path_identity.st_mode) and path_identity.st_size == 0
+                           and _stat_compatible(identity, _stat_key(path_identity))
+                           else _OwnedFile(destination))
                 created.append(initial)
                 pinned_fd = os.dup(descriptor_fd)
                 with os.fdopen(descriptor_fd, "wb") as handle:
@@ -289,7 +306,7 @@ def render_pdf_detail_views(
             check_cancelled()
             _safe_directory(directory)
             current = destination.lstat()
-            if not stat.S_ISREG(current.st_mode) or _stat_key(current) != owned.snapshot:
+            if not stat.S_ISREG(current.st_mode) or not _stat_compatible(current, owned.snapshot):
                 raise _DetailUnavailable("registration")
             views.append({**descriptor, "path": str(destination), "url": url})
         # Registration is a caller callback. Before returning, ensure no callback
@@ -303,7 +320,7 @@ def render_pdf_detail_views(
                 identity = os.fstat(descriptor_fd)
                 owned = next((item for item in created if item.path == path), None)
                 if (owned is None or not stat.S_ISREG(identity.st_mode)
-                        or _stat_key(identity) != owned.snapshot
+                        or not _stat_compatible(identity, owned.snapshot)
                         or identity.st_size != len(png)):
                     raise _DetailUnavailable("registration")
                 with os.fdopen(descriptor_fd, "rb") as handle:

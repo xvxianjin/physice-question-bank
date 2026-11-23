@@ -15,7 +15,7 @@ from mathbank.paper_parse import PAPER_SPLIT_TIMEOUT_SECONDS, parse_paper_comple
 from mathbank.import_classification import normalize_import_classifications
 from mathbank.pdf_vision_request import completion_content, PDFVisionResponseError
 from mathbank.prompts import build_pdf_parse_system_prompt
-from mathbank.question_assets import embedded_question_assets
+from mathbank.question_assets import embedded_question_assets, image_reference_spans
 from mathbank.source_metadata import (
     MAX_METADATA_MESSAGE_CHARACTERS, SourceMetadataContractError, SourceMetadataMessageBudgetError,
     SourceMetadataIdentityError,
@@ -25,6 +25,44 @@ from mathbank.source_metadata import (
 from mathbank.source_review_results import parse_review_response
 from mathbank.task_manager import TaskCancelled
 from mathbank.document_requests import is_retryable_document_http_status
+
+
+DUPLICATE_FIGURE_REASON = "同一配图在本题被重复引用（选项图可能错配），请对照原页核对。"
+
+
+def _duplicate_image_references(text: str) -> list[str]:
+    counts = {}
+    for _, _, path in image_reference_spans(text or ""):
+        counts[path] = counts.get(path, 0) + 1
+    return sorted(path for path, count in counts.items() if count > 1)
+
+
+def annotate_duplicate_figures(questions: list[dict]) -> int:
+    """Mark a question that reuses one image for two visible slots."""
+    marked = 0
+    for question in questions:
+        if not isinstance(question, dict):
+            continue
+        # Reusing the stem figure in the answer is expected; only two visible
+        # references inside the stem/options prove a duplicated figure slot.
+        duplicates = _duplicate_image_references(str(question.get("content") or ""))
+        if not duplicates:
+            continue
+        review = question.get("source_review")
+        if review is not None and not isinstance(review, dict):
+            continue
+        if not isinstance(review, dict):
+            review = {}
+            question["source_review"] = review
+        reasons = review.get("reasons")
+        if reasons is not None and not isinstance(reasons, list):
+            continue
+        reasons = list(reasons or [])
+        if DUPLICATE_FIGURE_REASON not in reasons:
+            reasons.append(DUPLICATE_FIGURE_REASON)
+        review.update(required=True, reasons=reasons)
+        marked += 1
+    return marked
 
 
 @dataclass
@@ -200,6 +238,7 @@ def _adopt_parts(parsed: dict, groups: list[dict], locks: dict, curriculum: dict
                 for q in questions:
                     q.pop("source_id", None)
                     annotate_ai_knowledge_points(q, knowledge_catalog)
+                annotate_duplicate_figures(questions)
             adopted[group["id"]] = questions
         except SourceMetadataIdentityError:
             raise
