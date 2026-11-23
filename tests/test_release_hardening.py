@@ -2,6 +2,7 @@ import ast
 import hashlib
 import io
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -577,6 +578,7 @@ import mathbank.paper_helper
 
 def _make_minimal_windows_tree(root, *, include_launcher_helper=True):
     for relative_path in (
+        *build_release.COURSE_RUNTIME_FILES,
         "main.py",
         "requirements.txt",
         "覆盖升级说明.txt",
@@ -638,6 +640,7 @@ def test_windows_release_tree_requires_launcher_helper(tmp_path):
 
 def _make_minimal_macos_tree(root):
     for relative_path in (
+        *build_release.COURSE_RUNTIME_FILES,
         "main.py",
         "requirements.txt",
         "覆盖升级说明.txt",
@@ -652,6 +655,14 @@ def _make_minimal_macos_tree(root):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("safe\n", encoding="utf-8")
     (root / "启动题库系统.command").chmod(0o755)
+
+
+@pytest.mark.parametrize("relative_path", sorted(build_release.COURSE_RUNTIME_FILES))
+def test_release_tree_requires_course_runtime_and_directory_resources(tmp_path, relative_path):
+    _make_minimal_macos_tree(tmp_path)
+    (tmp_path / relative_path).unlink()
+    with pytest.raises(RuntimeError, match=re.escape(relative_path)):
+        build_release.assert_release_tree_clean(tmp_path, "macos")
 
 
 def test_release_copy_excludes_internal_tools_and_preserves_runtime_imports(

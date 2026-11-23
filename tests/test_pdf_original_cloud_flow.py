@@ -110,9 +110,31 @@ def _replace_statement_block(node, current, original, *, count=1):
     assert replaced == count, "Reviewed PDF increment changed; inspect it before updating the contract"
 
 
+def _drop_keyword_argument(node, name, default):
+    pairs = [(arg, value) for arg, value in zip(node.args.kwonlyargs, node.args.kw_defaults)
+             if arg.arg == name]
+    assert len(pairs) == 1 and _ast_key(pairs[0][1]) == _ast_key(default)
+    node.args.kwonlyargs.remove(pairs[0][0])
+    node.args.kw_defaults.remove(pairs[0][1])
+
+
+def _drop_positional_argument(node, name, default):
+    names = [arg.arg for arg in node.args.args]
+    assert names.count(name) == 1
+    index = names.index(name)
+    prefix = len(node.args.args) - len(node.args.defaults)
+    assert index >= prefix
+    value_index = index - prefix
+    assert _ast_key(node.args.defaults[value_index]) == _ast_key(default)
+    node.args.args.pop(index)
+    node.args.defaults.pop(value_index)
+
+
 def _upstream_function_copy(node):
     node = deepcopy(node)
     if node.name == "parse_paper_text_internal":
+        _drop_keyword_argument(node, "course_id", ast.Constant(value=None))
+        _drop_keyword_argument(node, "curriculum_id", ast.Constant(value=None))
         model_config = [(arg, value) for arg, value in zip(node.args.kwonlyargs, node.args.kw_defaults)
                         if arg.arg == "model_config"]
         assert len(model_config) == 1 and _ast_key(model_config[0][1]) == _ast_key(ast.Constant(value=""))
@@ -133,19 +155,98 @@ def _upstream_function_copy(node):
         assert len(limits) == 1 and isinstance(limits[0].value, ast.Name) and limits[0].value.id == "pdf_max_attempts"
         calls[0].keywords.remove(limits[0])
         _replace_statement_block(node, '''
-curriculum = copy.deepcopy(get_current_curriculum())
-knowledge_catalog = copy.deepcopy(load_ai_knowledge_catalog())
-system_instructions = build_pdf_parse_system_prompt(curriculum, generate_answers_bool, knowledge_catalog)
-''', '''
-system_instructions = build_pdf_parse_system_prompt(get_current_curriculum(), generate_answers_bool)
-''')
-        _replace_statement_block(node, '''
 for question in parsed_questions:
     bind_ai_knowledge_catalog(question, knowledge_catalog)
 ''', "")
         _replace_statement_block(node,
             "validate_import_knowledge(parsed_questions, curriculum, diagnostics=diagnostics)",
             "validate_import_knowledge(parsed_questions, get_current_curriculum())", count=2)
+        _replace_statement_block(node, '''
+course = require_question_course(course_id) if course_id else None
+if course and course["subject"] == "physics":
+    resolved_curriculum = resolve_course_curriculum(course, curriculum_id)
+    _, curriculum = course_curriculum_tree(course, resolved_curriculum)
+    knowledge_catalog = []
+    exam = course_curriculum_catalog(course, resolved_curriculum)["exam"]
+    system_instructions = build_pdf_parse_system_prompt(
+        curriculum, generate_answers_bool, [],
+        subject="physics", exam=exam,
+    )
+else:
+    if course:
+        resolved_curriculum = resolve_course_curriculum(course, curriculum_id)
+        curriculum = import_curriculum_tree(
+            course, curriculum_id, resolved_curriculum,
+        )
+    else:
+        curriculum = copy.deepcopy(get_current_curriculum())
+    knowledge_catalog = copy.deepcopy(load_ai_knowledge_catalog())
+    system_instructions = build_pdf_parse_system_prompt(
+        curriculum, generate_answers_bool, knowledge_catalog
+    )
+''', '''
+system_instructions = build_pdf_parse_system_prompt(get_current_curriculum(), generate_answers_bool)
+''')
+        _replace_statement_block(node, '''
+if course and course["subject"] == "physics":
+    for question in parsed_questions:
+        question["knowledge_points"] = []
+        question["sub_knowledge"] = []
+''', "", count=2)
+    elif node.name == "run_pdf_parsing_task":
+        _drop_positional_argument(node, "course_id", ast.Constant(value=None))
+        _drop_positional_argument(node, "curriculum_id", ast.Constant(value=None))
+        _replace_statement_block(node, '''
+task_course = require_question_course(course_id) if course_id else None
+task_curriculum = None
+task_curriculum_id = None
+if task_course and task_course["subject"] == "physics":
+    task_curriculum_id = resolve_course_curriculum(task_course, curriculum_id)
+    _, task_curriculum = course_curriculum_tree(
+        task_course, task_curriculum_id,
+    )
+''', "")
+        _replace_statement_block(node, '''
+return parse_paper_text_internal(
+    locked_source, False, diagnostics=diagnostics, pdf_retry=True,
+    preserve_source_answers=preserve_source_answers, pdf_max_attempts=max_attempts,
+    check_cancelled=check_pdf_cancelled, report_attempt=report_pdf_split_attempt,
+    course_id=task_course["id"] if task_course else None,
+    curriculum_id=task_curriculum_id,
+    **({"model_config": pdf_parse_model} if pdf_parse_model else {}))
+''', '''
+return parse_paper_text_internal(
+    locked_source, False, diagnostics=diagnostics, pdf_retry=True,
+    preserve_source_answers=preserve_source_answers, pdf_max_attempts=max_attempts,
+    check_cancelled=check_pdf_cancelled, report_attempt=report_pdf_split_attempt,
+    **({"model_config": pdf_parse_model} if pdf_parse_model else {}))
+''')
+        # Locate the reviewed physics guard without depending on line numbers.
+        guarded = [
+            item for item in ast.walk(node)
+            if isinstance(item, ast.If)
+            and isinstance(item.test, ast.BoolOp)
+            and isinstance(item.test.op, ast.And)
+            and len(item.test.values) == 2
+            and any(isinstance(name, ast.Name) and name.id == "task_course"
+                    for name in ast.walk(item.test.values[1]))
+        ]
+        assert len(guarded) == 1
+        guarded[0].test = guarded[0].test.values[0]
+        hybrid_calls = [
+            item for item in ast.walk(node)
+            if isinstance(item, ast.Call)
+            and isinstance(item.func, ast.Name)
+            and item.func.id == "request_pdf_hybrid"
+        ]
+        assert len(hybrid_calls) == 1 and len(hybrid_calls[0].args) >= 2
+        curriculum_arg = hybrid_calls[0].args[1]
+        assert (isinstance(curriculum_arg, ast.BoolOp)
+                and isinstance(curriculum_arg.op, ast.Or)
+                and len(curriculum_arg.values) == 2
+                and _ast_key(curriculum_arg.values[1])
+                == _ast_key(ast.parse("get_current_curriculum()", mode="eval").body))
+        hybrid_calls[0].args[1] = ast.parse("get_current_curriculum()", mode="eval").body
     elif node.name == "post_process_pdf_parsed_questions":
         _replace_statement_block(node, '''
 knowledge_catalog = (load_ai_knowledge_catalog() if any(

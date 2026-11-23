@@ -216,3 +216,37 @@ def test_parse_paper_postprocesses_future_imports_without_touching_database():
         r"已知向量 $\mathbf{a}$，当 $x_1^2 \geqslant 0$ 时"
     )
     assert questions[0]["answer_markdown"] == r"由 $y^2 = x_1$ 得"
+
+
+def test_parse_paper_honors_explicit_math_curriculum():
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock, patch
+
+    from main import parse_paper_text_internal
+    from mathbank.curriculums import load_curriculum
+
+    provider = SimpleNamespace(
+        api_key="test-key",
+        api_base="https://example.invalid/v1/",
+        model_name="test-model",
+        provider_label="test provider",
+        credential_label="TEST_API_KEY",
+        provider_code="test",
+        reasoning_effort=None,
+    )
+    response = MagicMock()
+    response.json.return_value = {
+        "choices": [{"message": {"content": '{"questions": [{"content": "测试题", "answer_markdown": ""}]}'}}]
+    }
+    expected_book = next(iter(load_curriculum("B")))
+    with patch("main.resolve_text_provider", return_value=provider), patch(
+        "main.post_chat_completion", return_value=response
+    ) as post, patch("main.get_current_curriculum", return_value={"旧目录": {}}):
+        parse_paper_text_internal(
+            "原始试卷文本", False,
+            course_id="cn_hs_math", curriculum_id="B",
+        )
+
+    system_prompt = post.call_args.args[1]["messages"][0]["content"]
+    assert expected_book in system_prompt
+    assert "旧目录" not in system_prompt

@@ -137,7 +137,10 @@ def test_upload_seals_per_file_mineru_and_split_options(monkeypatch):
         "pdf_mineru_figures": "mineru", "pdf_ocr_engine": "mineru", "whole_page_ocr_dpi": 300,
         "pdf_parse_model": "SILICONFLOW/deepseek-ai/DeepSeek-V4.1-Flash",
     }
-    assert func.func is main.run_pdf_parsing_task and func.keywords == chosen
+    assert func.func is main.run_pdf_parsing_task
+    assert {key: func.keywords[key] for key in chosen} == chosen
+    assert func.keywords["course_id"] == "cn_hs_math"
+    assert func.keywords["curriculum_id"] == "A"
 
 
 def test_mineru_ocr_upload_sends_bound_transcript_to_selected_api(monkeypatch):

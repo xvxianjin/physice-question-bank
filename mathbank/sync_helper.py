@@ -41,6 +41,8 @@ def _fsync_file(path: str) -> None:
 def serialize_exchange_questions(db, questions, active_version):
     """Preserve mirrors, point definitions and confirmed/suggested evidence."""
     questions = list(questions)
+    from mathbank.course_curriculum import default_curriculum_id
+    from mathbank.courses import get_course
     # Historical v11/v12 archives remain exportable before migration.  The
     # top-level array is unchanged; v13 includes stable reference definitions,
     # never the physical display sequence number or HTML link markup.
@@ -60,6 +62,7 @@ def serialize_exchange_questions(db, questions, active_version):
             QuestionCurriculum.question_id, QuestionCurriculum.version_code
         ):
             mappings_by_question.setdefault(mapping.question_id, []).append({
+                "course_id": mapping.course_id or "cn_hs_math",
                 "version_code": mapping.version_code, "compulsory": mapping.compulsory,
                 "chapter": mapping.chapter, "knowledge": mapping.knowledge,
                 "sub_knowledge": mapping.sub_knowledge,
@@ -72,15 +75,28 @@ def serialize_exchange_questions(db, questions, active_version):
         # to_dict also reads the active mirror.  Reuse the bulk snapshot rather
         # than issuing one relationship query for every question.
         mappings = mappings_by_question.get(question.id, [])
-        active = next((mapping for mapping in mappings if mapping["version_code"] == active_version), None)
-        payload = question.to_dict(version_code=active_version, sub_knowledge=active["sub_knowledge"] if active else [])
+        question_course_id = question.course_id or "cn_hs_math"
+        if question_course_id == "cn_hs_math":
+            question_active_version = active_version
+        else:
+            course = get_course(question_course_id)
+            question_active_version = default_curriculum_id(course)
+        active = next(
+            (mapping for mapping in mappings
+             if mapping["version_code"] == question_active_version),
+            None,
+        )
+        payload = question.to_dict(
+            version_code=question_active_version,
+            sub_knowledge=active["sub_knowledge"] if active else [],
+        )
         point_payloads = []
         for row in question.knowledge_points:
             if row.point_code not in point_definitions:
                 point_definitions[row.point_code] = row.point.to_dict()
             point_payloads.append({**point_definitions[row.point_code], **row.to_dict(), "position": row.position})
         payload["knowledge_points"] = point_payloads
-        payload["active_version_code"] = active_version
+        payload["active_version_code"] = question_active_version
         payload["curriculum_mappings"] = mappings
         if active and any(payload["category_" + field] != active[field] for field in ("compulsory", "chapter", "knowledge")):
             raise RuntimeError("教材版本正在切换或主表镜像不一致，请稍后重试导出")

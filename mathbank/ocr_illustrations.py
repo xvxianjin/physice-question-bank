@@ -232,7 +232,17 @@ def parse_single_ocr_response(response) -> dict:
                 item["bbox"] = None
                 item["message"] = str(exc)
         illustrations.append(item)
-    # Duplicate or nested rectangles cannot demonstrate distinct illustrations.
+    _reject_duplicate_boxes(illustrations)
+    if len(slots) > MAX_OCR_FIGURES:
+        warnings.append("插图超过20幅，剩余占位已保留，请分开截图识别。")
+    if set(by_slot) - set(counts):
+        warnings.append("配图清单包含未对应正文占位的图号，已拒绝自动插入这些图片。")
+    warnings.extend(f"{item['slot'] or '插图'}：{item['message']}" for item in illustrations if item["message"])
+    return {"markdown": markdown, "illustrations": illustrations, "warnings": list(dict.fromkeys(warnings))}
+
+
+def _reject_duplicate_boxes(illustrations):
+    """Duplicate or nested rectangles cannot demonstrate distinct illustrations."""
     for index, first in enumerate(illustrations):
         if first["bbox"] is None:
             continue
@@ -247,10 +257,63 @@ def parse_single_ocr_response(response) -> dict:
                 for item in (first, second):
                     item["status"] = "unresolved"
                     item["message"] = "多幅插图的图框重复或相互包含，请手动核对后截图。"
+
+
+def rebuild_ocr_illustrations(markdown, figures):
+    """Rebuild review-ready slots for an existing transcript without re-OCR.
+
+    The caller supplies the current editor text so later edits survive. Only
+    the original source image's figure boxes are reused; no new paths or
+    offsets are accepted from the browser.
+    """
+    if not isinstance(markdown, str) or not markdown.strip() or len(markdown) > MAX_OCR_SOURCE_CHARS:
+        raise ValueError("待补图正文为空或过长，请重新识别。")
+    if not isinstance(figures, list) or not figures or len(figures) > MAX_OCR_FIGURES:
+        raise ValueError("配图清单为空或超过20幅。")
+    slots = _visible_slots(markdown)
+    if not slots:
+        raise ValueError("当前正文没有可补的插图占位。")
+    counts = Counter(slot["slot"] for slot in slots)
+    by_slot, duplicate_slots = {}, set()
+    for figure in figures:
+        if not isinstance(figure, dict) or set(figure) - {"slot", "bbox"}:
+            continue
+        slot = figure.get("slot")
+        if not isinstance(slot, str):
+            continue
+        if slot in by_slot:
+            duplicate_slots.add(slot)
+            continue
+        by_slot[slot] = figure
+    illustrations = []
+    warnings = []
+    for slot in slots[:MAX_OCR_FIGURES]:
+        item = {**slot, "bbox": None, "status": "unresolved", "image_path": "",
+                "tikz_code": "", "tikz_image_path": "", "reference_image_path": "",
+                "message": "", "anchor_valid": bool(
+                    _SLOT_NAME.fullmatch(slot["slot"]) and counts[slot["slot"]] == 1
+                    and slot["slot"] not in duplicate_slots)}
+        figure = by_slot.get(slot["slot"])
+        if not item["anchor_valid"]:
+            item["message"] = ("同一图号被重复绑定，请手动核对位置后截图。"
+                               if slot["slot"] in duplicate_slots
+                               else "插图占位缺少唯一图号，请手动核对位置后截图。")
+        elif figure is None:
+            item["message"] = "插图定位缺失，请重新识别或手动截图。"
+        else:
+            try:
+                item["bbox"] = _checked_bbox(figure.get("bbox"))
+                if item["bbox"] is None:
+                    item["message"] = "插图边界缺失，请重新识别或手动截图。"
+                else:
+                    item["status"] = "pending"
+            except (ValueError, OverflowError) as exc:
+                item["bbox"] = None
+                item["message"] = str(exc)
+        illustrations.append(item)
+    _reject_duplicate_boxes(illustrations)
     if len(slots) > MAX_OCR_FIGURES:
         warnings.append("插图超过20幅，剩余占位已保留，请分开截图识别。")
-    if set(by_slot) - set(counts):
-        warnings.append("配图清单包含未对应正文占位的图号，已拒绝自动插入这些图片。")
     warnings.extend(f"{item['slot'] or '插图'}：{item['message']}" for item in illustrations if item["message"])
     return {"markdown": markdown, "illustrations": illustrations, "warnings": list(dict.fromkeys(warnings))}
 

@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "curriculum_id": "ap_c_em",
+  "course_id": "ap_physics_c_em",
+  "title": "AP Physics C: Electricity and Magnetism (2027 CED)",
+  "verification": "official",
+  "source": {
+    "publisher": "College Board",
+    "document": "AP Physics C: Electricity and Magnetism Course and Exam Description",
+    "url": "https://apcentral.collegeboard.org/media/pdf/ap-physics-c-electricity-and-magnetism-course-and-exam-description.pdf",
+    "version": "Course Framework V.1, 2027 exam",
+    "verified_on": "2026-11-21"
+  },
+  "structure": "units",
+  "units": [
+    {
+      "id": "unit_8_charges_fields_gauss",
+      "number": 8,
+      "title": "Electric Charges, Fields, and Gauss’s Law",
+      "weight": "15–25%",
+      "topics": [
+        {"id": "8.1", "title": "Electric Charge and Electric Force"},
+        {"id": "8.2", "title": "Conservation of Electric Charge and the Process of Charging"},
+        {"id": "8.3", "title": "Electric Fields"},
+        {"id": "8.4", "title": "Electric Fields of Charge Distributions"},
+        {"id": "8.5", "title": "Electric Flux"},
+        {"id": "8.6", "title": "Gauss’s Law"}
+      ]
+    },
+    {
+      "id": "unit_9_electric_potential",
+      "number": 9,
+      "title": "Electric Potential",
+      "weight": "10–20%",
+      "topics": [
+        {"id": "9.1", "title": "Electric Potential Energy"},
+        {"id": "9.2", "title": "Electric Potential"},
+        {"id": "9.3", "title": "Conservation of Electric Energy"}
+      ]
+    },
+    {
+      "id": "unit_10_conductors_capacitors",
+      "number": 10,
+      "title": "Conductors and Capacitors",
+      "weight": "10–15%",
+      "topics": [
+        {"id": "10.1", "title": "Electrostatics with Conductors"},
+        {"id": "10.2", "title": "Redistribution of Charge Between Conductors"},
+        {"id": "10.3", "title": "Capacitors"},
+        {"id": "10.4", "title": "Dielectrics"}
+      ]
+    },
+    {
+      "id": "unit_11_electric_circuits",
+      "number": 11,
+      "title": "Electric Circuits",
+      "weight": "15–25%",
+      "topics": [
+        {"id": "11.1", "title": "Electric Current"},
+        {"id": "11.2", "title": "Simple Circuits"},
+        {"id": "11.3", "title": "Resistance, Resistivity, and Ohm’s Law"},
+        {"id": "11.4", "title": "Electric Power"},
+        {"id": "11.5", "title": "Compound Direct Current Circuits"},
+        {"id": "11.6", "title": "Kirchhoff’s Loop Rule"},
+        {"id": "11.7", "title": "Kirchhoff’s Junction Rule"},
+        {"id": "11.8", "title": "Resistor-Capacitor (RC) Circuits"}
+      ]
+    },
+    {
+      "id": "unit_12_magnetic_fields_electromagnetism",
+      "number": 12,
+      "title": "Magnetic Fields and Electromagnetism",
+      "weight": "10–20%",
+      "topics": [
+        {"id": "12.1", "title": "Magnetic Fields"},
+        {"id": "12.2", "title": "Magnetism and Moving Charges"},
+        {"id": "12.3", "title": "Magnetic Fields of Current-Carrying Wires and the Biot-Savart Law"},
+        {"id": "12.4", "title": "Ampère’s Law"}
+      ]
+    },
+    {
+      "id": "unit_13_electromagnetic_induction",
+      "number": 13,
+      "title": "Electromagnetic Induction",
+      "weight": "10–20%",
+      "topics": [
+        {"id": "13.1", "title": "Magnetic Flux"},
+        {"id": "13.2", "title": "Electromagnetic Induction"},
+        {"id": "13.3", "title": "Induced Currents and Magnetic Forces"},
+        {"id": "13.4", "title": "Inductance"},
+        {"id": "13.5", "title": "Circuits with Resistors and Inductors (LR Circuits)"},
+        {"id": "13.6", "title": "Circuits with Capacitors and Inductors (LC Circuits)"}
+      ]
+    }
+  ],
+  "books": [],
+  "exam": {
+    "year": 2027,
+    "multiple_choice": 42,
+    "multiple_choice_minutes": 85,
+    "free_response": 4,
+    "free_response_minutes": 95,
+    "calculator_allowed": true,
+    "science_practices": [
+      {
+        "id": 1,
+        "title": "Creating Representations",
+        "description": "Create representations that depict physical phenomena.",
+        "skills": [
+          {"id": "1.A", "title": "Create diagrams, tables, charts, or schematics to represent physical situations."},
+          {"id": "1.B", "title": "Create quantitative graphs with appropriate scales and units, including plotting data."},
+          {"id": "1.C", "title": "Create qualitative sketches of graphs that represent features of a model or the behavior of a physical system."}
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Mathematical Routines",
+        "description": "Conduct analyses to derive, calculate, estimate, or predict.",
+        "skills": [
+          {"id": "2.A", "title": "Derive a symbolic expression from known quantities by selecting and following a logical mathematical pathway."},
+          {"id": "2.B", "title": "Calculate or estimate an unknown quantity with units from known quantities, by selecting and following a logical computational pathway."},
+          {"id": "2.C", "title": "Compare physical quantities between two or more scenarios or at different times and locations in a single scenario."},
+          {"id": "2.D", "title": "Predict new values or factors of change of physical quantities using functional dependence between variables."}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Scientific Questioning and Argumentation",
+        "description": "Describe experimental procedures, analyze data, and support claims.",
+        "skills": [
+          {"id": "3.A", "title": "Create experimental procedures that are appropriate for a given scientific question."},
+          {"id": "3.B", "title": "Apply an appropriate law, definition, theoretical relationship, or model to make a claim."},
+          {"id": "3.C", "title": "Justify or support a claim using evidence from experimental data, physical representations, or physical principles or laws."}
+        ]
+      }
+    ],
+    "free_response_types": [
+      {"id": 1, "title": "Mathematical Routines"},
+      {"id": 2, "title": "Translation Between Representations"},
+      {"id": 3, "title": "Experimental Design and Analysis"},
+      {"id": 4, "title": "Qualitative/Quantitative Translation"}
+    ]
+  }
+}

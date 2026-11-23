@@ -51,6 +51,9 @@ ENV_EXAMPLE_FILE = PROJECT_ROOT / ".env.example"
 DIST_DIR = PROJECT_ROOT / "dist"
 BUILD_CACHE_DIR = PROJECT_ROOT / ".build_cache"
 CURRICULUMS_DIR = Path(__file__).resolve().parent / "resources" / "curriculums"
+COURSES_FILE = PROJECT_ROOT / "mathbank" / "resources" / "courses.json"
+PHYSICS_CURRICULUMS_DIR = Path(__file__).resolve().parent / "resources" / "physics"
+PHYSICS_GROUPS_FILE = PHYSICS_CURRICULUMS_DIR / "groups" / "cn_physics_groups.json"
 KNOWLEDGE_PROMPT_PROFILES_DIR = PROJECT_ROOT / "mathbank" / "resources" / "knowledge_prompt_profiles"
 
 

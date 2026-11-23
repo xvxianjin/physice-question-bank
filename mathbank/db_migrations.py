@@ -20,7 +20,7 @@ from mathbank.paths import SCHEMA_SNAPSHOT_DIR
 from mathbank.sub_knowledge import normalize_sub_knowledge
 
 
-LATEST_SCHEMA_VERSION = 16
+LATEST_SCHEMA_VERSION = 17
 LEGACY_REQUIRED_TABLES = {
     "questions",
     "question_curriculums",
@@ -121,6 +121,19 @@ V7_QUESTION_FINGERPRINT_INDEXES = {
         "band7",
         "token_count",
     ),
+}
+
+COURSE_COLUMNS = {
+    "questions": {
+        "subject": "VARCHAR(20) NOT NULL DEFAULT 'math'",
+        "course_id": "VARCHAR(64) NOT NULL DEFAULT 'cn_hs_math'",
+    },
+    "question_curriculums": {
+        "course_id": "VARCHAR(64) NOT NULL DEFAULT 'cn_hs_math'",
+    },
+    "knowledge_point_curriculums": {
+        "course_id": "VARCHAR(64) NOT NULL DEFAULT 'cn_hs_math'",
+    },
 }
 
 QUESTION_FINGERPRINT_INDEXES = {
@@ -449,6 +462,103 @@ def _validate_figure_layout_schema(connection) -> None:
         raise RuntimeError("questions.figure_align_custom 包含无效值")
 
 
+def _ensure_course_columns(connection) -> dict[str, int]:
+    """v17 persists course ownership; every existing row stays mathematics."""
+
+    stats: dict[str, int] = {}
+    existing_tables = set(inspect(connection).get_table_names())
+    for table, additions in COURSE_COLUMNS.items():
+        if table not in existing_tables:
+            continue
+        info = {
+            row[1]: row
+            for row in connection.exec_driver_sql(
+                f'PRAGMA table_info("{table}")'
+            ).fetchall()
+        }
+        for column, definition in additions.items():
+            added = column not in info
+            if added:
+                connection.exec_driver_sql(
+                    f'ALTER TABLE "{table}" ADD COLUMN {column} {definition}'
+                )
+            stats[f"added_{table}_{column}"] = int(added)
+    connection.exec_driver_sql(
+        "UPDATE questions SET subject='math' "
+        "WHERE subject IS NULL OR TRIM(subject)=''"
+    )
+    connection.exec_driver_sql(
+        "UPDATE questions SET course_id='cn_hs_math' "
+        "WHERE course_id IS NULL OR TRIM(course_id)=''"
+    )
+    for table in ("question_curriculums", "knowledge_point_curriculums"):
+        if table in existing_tables:
+            connection.exec_driver_sql(
+                f"UPDATE {table} SET course_id='cn_hs_math' "
+                "WHERE course_id IS NULL OR TRIM(course_id)=''"
+            )
+    for table, columns in COURSE_COLUMNS.items():
+        if table not in existing_tables:
+            continue
+        for column in columns:
+            connection.exec_driver_sql(
+                f'CREATE INDEX IF NOT EXISTS "ix_{table}_{column}" '
+                f'ON "{table}" ({column})'
+            )
+    _validate_course_schema(connection)
+    return stats
+
+
+def _validate_course_schema(connection) -> None:
+    """Fail closed on missing or malformed course ownership columns."""
+
+    existing_tables = set(inspect(connection).get_table_names())
+    for table, expected_columns in COURSE_COLUMNS.items():
+        if table not in existing_tables:
+            continue
+        info = {
+            row[1]: row
+            for row in connection.exec_driver_sql(
+                f'PRAGMA table_info("{table}")'
+            ).fetchall()
+        }
+        for column in expected_columns:
+            field = info.get(column)
+            if field is None:
+                raise RuntimeError(
+                    f"数据库表 {table} 缺少核心字段: {column}"
+                )
+            if int(field[3]) != 1:
+                raise RuntimeError(f"{table}.{column} 必须为非空字段")
+        indexes = connection.exec_driver_sql(
+            f'PRAGMA index_list("{table}")'
+        ).fetchall()
+        for column in expected_columns:
+            index_name = f"ix_{table}_{column}"
+            if not any(row[1] == index_name for row in indexes):
+                raise RuntimeError(f"数据库表 {table} 缺少索引: {column}")
+    invalid_questions = int(
+        connection.exec_driver_sql(
+            "SELECT COUNT(*) FROM questions WHERE "
+            "subject NOT IN ('math', 'physics') "
+            "OR course_id IS NULL OR course_id='' OR LENGTH(course_id) > 64"
+        ).scalar_one()
+    )
+    if invalid_questions:
+        raise RuntimeError("questions 包含无效的学科或课程归属")
+    for table in ("question_curriculums", "knowledge_point_curriculums"):
+        if table not in existing_tables:
+            continue
+        invalid = int(
+            connection.exec_driver_sql(
+                f"SELECT COUNT(*) FROM {table} WHERE "
+                "course_id IS NULL OR course_id='' OR LENGTH(course_id) > 64"
+            ).scalar_one()
+        )
+        if invalid:
+            raise RuntimeError(f"{table} 包含无效的课程归属")
+
+
 def _ensure_sub_knowledge_columns(connection) -> dict[str, int]:
     """v11 adds an empty relation; no historical chapter labels/tags change."""
 
@@ -524,7 +634,7 @@ def _ensure_knowledge_point_tables(connection) -> dict[str, int]:
     return stats
 
 
-def _validate_knowledge_point_schema(connection) -> None:
+def _validate_knowledge_point_schema(connection, *, require_course: bool = True) -> None:
     """Fail closed for incomplete constraints, indexes, or persisted point data."""
 
     from mathbank.database import KnowledgePoint, KnowledgePointCurriculum, QuestionKnowledgePoint
@@ -544,11 +654,18 @@ def _validate_knowledge_point_schema(connection) -> None:
     for model in models:
         table = model.__tablename__
         info = {row[1]: row for row in connection.exec_driver_sql(f'PRAGMA table_info("{table}")')}
-        columns = model.__table__.columns
-        if set(info) != set(columns.keys()) or any(not column.nullable and not int(info[column.name][3]) for column in columns if column.name != "id"):
+        columns = {column.name: column for column in model.__table__.columns}
+        if not require_course:
+            # Backups written before schema v17 may omit or already contain the
+            # optional column; restore migrates the former after validation.
+            columns.pop("course_id", None)
+        actual_columns = set(info)
+        if not require_course:
+            actual_columns.discard("course_id")
+        if actual_columns != set(columns) or any(not column.nullable and not int(info[column.name][3]) for column in columns.values() if column.name != "id"):
             raise RuntimeError(f"知识点表 {table} 缺少核心字段或非空约束")
         primary_keys = tuple(row[1] for row in sorted(info.values(), key=lambda row: row[5]) if row[5])
-        if primary_keys != tuple(column.name for column in columns if column.primary_key):
+        if primary_keys != tuple(column.name for column in columns.values() if column.primary_key):
             raise RuntimeError(f"知识点表 {table} 主键结构异常")
         actual_indexes = set()
         for index in connection.exec_driver_sql(f'PRAGMA index_list("{table}")'):
@@ -988,6 +1105,7 @@ def _rebuild_relationship_tables(engine: Engine) -> dict[str, int]:
             )
             tikz_column_stats = _ensure_tikz_asset_columns(connection)
             figure_layout_stats = _ensure_figure_layout_columns(connection)
+            course_stats = _ensure_course_columns(connection)
             sub_knowledge_stats = _ensure_sub_knowledge_columns(connection)
             knowledge_point_stats = _ensure_knowledge_point_tables(connection)
             question_reference_stats = _ensure_question_reference_tables(connection)
@@ -995,6 +1113,7 @@ def _rebuild_relationship_tables(engine: Engine) -> dict[str, int]:
             _ensure_library_import_receipts(connection)
             added_question_fingerprints = _ensure_question_fingerprint_table(connection)
             _validate_figure_layout_schema(connection)
+            _validate_course_schema(connection)
 
             violations = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
             if violations:
@@ -1009,6 +1128,7 @@ def _rebuild_relationship_tables(engine: Engine) -> dict[str, int]:
                 "added_question_fingerprints": added_question_fingerprints,
                 **tikz_column_stats,
                 **figure_layout_stats,
+                **course_stats,
                 **sub_knowledge_stats,
                 **knowledge_point_stats,
                 **question_reference_stats,
@@ -1036,6 +1156,7 @@ def _upgrade_derived_schema(engine: Engine) -> dict[str, int]:
             transaction_started = True
             stats = _ensure_tikz_asset_columns(connection)
             stats.update(_ensure_figure_layout_columns(connection))
+            stats.update(_ensure_course_columns(connection))
             stats.update(_ensure_sub_knowledge_columns(connection))
             stats.update(_ensure_knowledge_point_tables(connection))
             stats.update(_ensure_question_reference_tables(connection))
@@ -1045,6 +1166,7 @@ def _upgrade_derived_schema(engine: Engine) -> dict[str, int]:
                 _ensure_question_fingerprint_table(connection)
             )
             _validate_figure_layout_schema(connection)
+            _validate_course_schema(connection)
             connection.exec_driver_sql(f"PRAGMA user_version={LATEST_SCHEMA_VERSION}")
             connection.exec_driver_sql("COMMIT")
             transaction_started = False
@@ -1113,12 +1235,14 @@ def _upgrade_v6_or_v7_fingerprint_schema(
                 added_text_indexes += 1
             _validate_question_fingerprint_schema(connection)
             figure_layout_stats = _ensure_figure_layout_columns(connection)
+            course_stats = _ensure_course_columns(connection)
             sub_knowledge_stats = _ensure_sub_knowledge_columns(connection)
             knowledge_point_stats = _ensure_knowledge_point_tables(connection)
             question_reference_stats = _ensure_question_reference_tables(connection)
             question_order_stats = _ensure_question_order_schema(connection)
             _ensure_library_import_receipts(connection)
             _validate_figure_layout_schema(connection)
+            _validate_course_schema(connection)
             connection.exec_driver_sql(f"PRAGMA user_version={LATEST_SCHEMA_VERSION}")
             connection.exec_driver_sql("COMMIT")
             transaction_started = False
@@ -1127,6 +1251,7 @@ def _upgrade_v6_or_v7_fingerprint_schema(
                 "added_question_fingerprint_text_columns": 8,
                 "added_question_fingerprint_text_indexes": added_text_indexes,
                 **figure_layout_stats,
+                **course_stats,
                 **sub_knowledge_stats,
                 **knowledge_point_stats,
                 **question_reference_stats,
@@ -1158,6 +1283,7 @@ def migrate_database(
         with engine.connect() as connection:
             _validate_question_fingerprint_schema(connection)
             _validate_figure_layout_schema(connection)
+            _validate_course_schema(connection)
             _validate_sub_knowledge_schema(connection)
             _validate_knowledge_point_schema(connection)
             _validate_question_reference_schema(connection)

@@ -1,0 +1,69 @@
+{
+  "schema_version": 2,
+  "standard": {
+    "id": "cn_physics_2017_2025",
+    "title": "普通高中物理课程标准日常修订版（2017年版2025年修订）",
+    "publisher": "中华人民共和国教育部",
+    "published_on": "2025-10",
+    "source_url": "https://www.ictr.edu.cn/news/gao/detail/5448.html",
+    "verified_on": "2026-11-22"
+  },
+  "groups": [
+    {
+      "id": "group_northwest_2026",
+      "name": "西北联合卷（晋陕宁青，2026 卷面基线）",
+      "status": "provisional",
+      "provinces": ["shanxi", "shaanxi", "ningxia", "qinghai"],
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "exam_profile_id": "cn_physics_northwest_2026",
+      "source": {
+        "document": "2026年陕西高考物理试题分析及对比解读（中国教育在线）：陕西、山西、宁夏、青海四省统一卷；75分钟/100分/13道选择（7单选+6多选）+1实验+2计算",
+        "url": "https://www.eol.cn/kaoshi/gaokao/gkzx/202606/t20260608_2742699.shtml",
+        "verified_on": "2026-11-22",
+        "kind": "media"
+      }
+    },
+    {
+      "id": "group_northeast_2026",
+      "name": "东北联合卷（黑吉辽蒙，2026 卷面基线）",
+      "status": "provisional",
+      "provinces": ["heilongjiang", "jilin", "liaoning", "neimenggu"],
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "exam_profile_id": "cn_physics_northeast_2026",
+      "source": {
+        "document": "2026年高考黑吉辽蒙卷物理试题评介：15题/100分/7单选（每题4分）+3多选（每题6分）+2实验（约22分）+3解答（约32分）；时长以省考试安排为准",
+        "url": "https://www.yeyulingfeng.com/a/1290780.html",
+        "verified_on": "2026-11-22",
+        "kind": "media"
+      }
+    },
+    {
+      "id": "group_shandong_2026",
+      "name": "山东卷（2026 卷面基线）",
+      "status": "provisional",
+      "provinces": ["shandong"],
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "exam_profile_id": "cn_physics_shandong_2026",
+      "source": {
+        "document": "2026年山东高考真题解析（山东卷物理）：90分钟/100分/8单选（24分）+4多选（16分）+2实验（18分）+4计算（42分）",
+        "url": "https://m.jiaoyubao.cn/news/n409228.html",
+        "verified_on": "2026-11-22",
+        "kind": "media"
+      }
+    },
+    {
+      "id": "group_shanghai_2026",
+      "name": "上海卷（2026 命题要求）",
+      "status": "official",
+      "provinces": ["shanghai"],
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "exam_profile_id": "cn_physics_shanghai_2026",
+      "source": {
+        "document": "2026年上海市普通高中学业水平考试实施细则：高中学业水平考试由市教育考试院统一命题、统一评卷；物理合格性与等级性考试均为60分钟，各科目满分100分",
+        "url": "https://www.shedunews.sh.cn/zhaokao/con/2025-11/05/content_28485.html",
+        "verified_on": "2026-11-22",
+        "kind": "official"
+      }
+    }
+  ]
+}

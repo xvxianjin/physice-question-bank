@@ -1004,7 +1004,8 @@ def test_duplicate_checks_are_click_triggered_snapshot_bound_and_explicitly_over
     request_end = import_source.index("function duplicateBatchMatchCount", request_start)
     request_source = import_source[request_start:request_end]
     assert "'/api/questions/check-duplicates'" in request_source
-    assert "JSON.stringify({ items: items, max_candidates: 5 })" in request_source
+    assert "window.MathBankCourse.bodyData({ items: items, max_candidates: 5 })" in request_source
+    assert ": { items: items, max_candidates: 5 }" in request_source
     assert "'X-Local-Token'" in request_source
     assert "signal: controller.signal" in request_source
     assert "isValidationError" in request_source
@@ -1155,7 +1156,8 @@ def test_shared_question_preview_pipeline_is_used_by_editor_and_duplicate_review
     assert "content.textContent" not in candidate_source
     assert "plainContent" not in candidate_source
     assert "点击加载并渲染完整题干" in candidate_source
-    assert "fetch(`/api/questions/${Number(candidate.id)}`)" in candidate_source
+    assert "window.MathBankCourse.withQuery(`/api/questions/${Number(candidate.id)}`)" in candidate_source
+    assert ": `/api/questions/${Number(candidate.id)}`" in candidate_source
     assert "reasonText.textContent" in candidate_source
     assert ".innerHTML" not in candidate_source
     assert "(?<=" not in import_source

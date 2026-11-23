@@ -985,7 +985,10 @@ def verify_full_backup(archive_path: Path) -> dict[str, Any]:
                                 _validate_sub_knowledge_schema(validation_connection)
                             if schema_version >= 12:
                                 from mathbank.db_migrations import _validate_knowledge_point_schema
-                                _validate_knowledge_point_schema(validation_connection)
+                                _validate_knowledge_point_schema(
+                                    validation_connection,
+                                    require_course=schema_version >= 17,
+                                )
                             if schema_version >= 13:
                                 from mathbank.db_migrations import _validate_question_reference_schema
                                 _validate_question_reference_schema(validation_connection)

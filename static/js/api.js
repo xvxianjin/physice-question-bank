@@ -1865,7 +1865,8 @@
         function loadCategories(options = {}) {
             const reloadCurrentQuestion = options.reloadCurrentQuestion === true;
             const retryCount = Number.isInteger(options.retryCount) ? options.retryCount : 0;
-            return fetch('/api/config/metadata')
+            return Promise.resolve(window.MathBankCourse?.ready?.() || null)
+                .then(() => fetch('/api/config/metadata'))
                 .then(r => {
                     if (!r.ok) {
                         throw new Error(`获取元数据状态异常: ${r.status}`);
@@ -1877,7 +1878,10 @@
                     window.systemMetadata = meta; // Global export
                     populateMetadataDropdowns();
                     
-                    return fetch('/api/categories');
+                    const categoryParams = new URLSearchParams();
+                    if (window.MathBankCourse) window.MathBankCourse.appendTo(categoryParams);
+                    const query = categoryParams.toString();
+                    return fetch('/api/categories' + (query ? '?' + query : ''));
                 })
                 .then(r => {
                     if (!r.ok) {
@@ -1920,6 +1924,7 @@
                     }
                 });
         }
+        window.loadCategories = loadCategories;
 
         // Populate Metadata Select Option Lists Dynamically
         function setEditorMetadataValue(select, value, label = '') {
@@ -2943,8 +2948,32 @@
         }
 
         // Open update modal with data
+        window.refreshReleaseLinks = function(data) {
+            const url = data && data.update_enabled === true && data.release_url;
+            for (const id of ['aboutReleaseLink', 'btnViewOnGithub']) {
+                const link = document.getElementById(id);
+                if (!link) continue;
+                if (typeof url === 'string' && /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9_.-]+\/releases(?:\/|$)/.test(url)) {
+                    link.href = url;
+                    link.removeAttribute('aria-disabled');
+                    link.removeAttribute('tabindex');
+                    link.classList.remove('opacity-50', 'pointer-events-none');
+                } else {
+                    link.removeAttribute('href');
+                    link.setAttribute('aria-disabled', 'true');
+                    link.setAttribute('tabindex', '-1');
+                    link.classList.add('opacity-50', 'pointer-events-none');
+                }
+            }
+        };
+
         window.openUpdateModal = function(releaseData) {
+            refreshReleaseLinks(releaseData);
             if (!releaseData) return;
+            if (releaseData.update_enabled === false || !releaseData.has_update) {
+                showToast(releaseData.update_reason || '暂无可用更新。', 'info');
+                return;
+            }
             const modal = document.getElementById('updateModal');
             if (!modal) return;
 
@@ -2952,11 +2981,10 @@
             const badgeEl = document.getElementById('updateModalBadge');
             const dateEl = document.getElementById('updateModalDate');
             const bodyEl = document.getElementById('updateModalBody');
-            const btnGithub = document.getElementById('btnViewOnGithub');
             const btnIgnoreText = document.getElementById('btnIgnoreVersionText');
             const gitTip = document.getElementById('updateGitTip');
 
-            const latestVer = releaseData.latest_version || releaseData.current_version || 'v2.0.1';
+            const latestVer = releaseData.latest_version || releaseData.current_version || '';
             if (titleEl) titleEl.innerText = `发现新版本 ${latestVer}`;
             if (badgeEl) badgeEl.innerText = releaseData.release_title || 'NEW RELEASE';
             
@@ -2973,9 +3001,6 @@
                 bodyEl.innerText = releaseData.release_body || '本版本包含多项性能与体验优化，推荐升级。';
             }
 
-            if (btnGithub && releaseData.release_url) {
-                btnGithub.href = releaseData.release_url;
-            }
 
             if (btnIgnoreText) {
                 btnIgnoreText.innerText = `忽略此版本 (${latestVer})`;
@@ -3005,7 +3030,8 @@
                     btnMac.classList.remove('opacity-50', 'pointer-events-none');
                     if (macSize) macSize.innerText = `${macAsset.size_mb} MB • .zip 格式`;
                 } else {
-                    btnMac.href = releaseData.release_url || 'https://github.com/JudgePeach/math-question-bank/releases';
+                    if (releaseData.release_url) btnMac.href = releaseData.release_url;
+                    else btnMac.removeAttribute('href');
                     if (macSize) macSize.innerText = '前往 Releases 下载';
                 }
                 if (clientOS === 'macOS') {
@@ -3021,7 +3047,8 @@
                     btnWin.classList.remove('opacity-50', 'pointer-events-none');
                     if (winSize) winSize.innerText = `${winAsset.size_mb} MB • .zip 格式`;
                 } else {
-                    btnWin.href = releaseData.release_url || 'https://github.com/JudgePeach/math-question-bank/releases';
+                    if (releaseData.release_url) btnWin.href = releaseData.release_url;
+                    else btnWin.removeAttribute('href');
                     if (winSize) winSize.innerText = '前往 Releases 下载';
                 }
                 if (clientOS === 'Windows') {
@@ -3103,6 +3130,7 @@
 
         // Refresh update info in About Tab
         window.refreshAboutTabUpdateInfo = function() {
+            refreshReleaseLinks(latestReleaseCache);
             const textEl = document.getElementById('aboutUpdateStatusText');
             const badgeVer = document.getElementById('aboutCurrentVersionBadge');
             const ignoredRow = document.getElementById('ignoredVersionRow');
@@ -3120,10 +3148,14 @@
             }
 
             if (latestReleaseCache) {
-                if (badgeVer) badgeVer.innerText = `v${latestReleaseCache.current_version.replace(/^v/i, '')}`;
+                if (badgeVer && latestReleaseCache.current_version) badgeVer.innerText = `v${latestReleaseCache.current_version.replace(/^v/i, '')}`;
                 if (textEl) {
-                    if (latestReleaseCache.has_update) {
+                    if (latestReleaseCache.update_enabled === false) {
+                        textEl.innerText = latestReleaseCache.update_reason || '未配置更新源，更新已禁用。';
+                    } else if (latestReleaseCache.has_update) {
                         textEl.innerHTML = `<span class="text-brand-600 font-bold">发现新版本 ${MathBankSafe.escapeText(latestReleaseCache.latest_version)}</span>（当前为 v${MathBankSafe.escapeText(latestReleaseCache.current_version)}）`;
+                    } else if (latestReleaseCache.status !== 'success') {
+                        textEl.innerText = latestReleaseCache.message || '检查更新失败，版本状态未确认。';
                     } else {
                         textEl.innerText = `当前已是最新版本 (v${latestReleaseCache.current_version}) • 运行环境正常`;
                     }
@@ -3152,7 +3184,7 @@
             const spinIcon = document.getElementById('checkUpdateSpinIcon');
             const textEl = document.getElementById('aboutUpdateStatusText');
             if (spinIcon) spinIcon.classList.add('fa-spin');
-            if (textEl) textEl.innerText = '正在连接 GitHub 检测最新版本...';
+            if (textEl) textEl.innerText = '正在检查更新状态...';
 
             try {
                 const res = await fetch('/api/version/check-update');
@@ -3163,7 +3195,12 @@
                 if (spinIcon) spinIcon.classList.remove('fa-spin');
                 refreshAboutTabUpdateInfo();
 
-                if (data.status === 'success') {
+                if (data.update_enabled === false) {
+                    const badge = document.getElementById('updateBadge');
+                    if (badge) badge.classList.add('hidden');
+                    closeUpdateModal();
+                    if (isUserTriggered) showToast(data.update_reason || '未配置更新源，更新已禁用。', 'info');
+                } else if (data.status === 'success') {
                     const ignoredVer = localStorage.getItem(IGNORED_UPDATE_KEY);
                     const badge = document.getElementById('updateBadge');
 
@@ -3194,7 +3231,7 @@
             }
         };
 
-        // Developer / user demo preview
+        // Show real release metadata only.
         window.previewUpdateModalDemo = function() {
             if (latestReleaseCache) {
                 openUpdateModal(latestReleaseCache);
@@ -3206,21 +3243,11 @@
                         openUpdateModal(data);
                     })
                     .catch(err => {
-                        // Fallback demo data
-                        const demoData = {
-                            current_version: "2.0.1",
-                            latest_version: "v2.0.1",
-                            release_title: "v2.0.1 正式发布",
-                            release_body: "1. 新增 Word (.docx) 试卷 OMML 公式与插图 0 损直提智能拆解。\n2. 全新升级 KaTeX 填空题 \\fillin 宏与数学比较符号防撕裂转义自愈。\n3. 优化拖放区域 UI 与拆分进度动画盒模型。\n4. 内置版本自动检测、忽略更新与便携包一键直链更新体系。",
-                            release_url: "https://github.com/JudgePeach/math-question-bank/releases",
-                            published_at: new Date().toISOString(),
-                            is_git_repo: true,
-                            assets: {
-                                macOS: { name: "MathBank-macOS.zip", size_mb: 11.7, downloads: 40, url: "https://github.com/JudgePeach/math-question-bank/releases" },
-                                Windows: { name: "MathBank-Windows-x64.zip", size_mb: 51.2, downloads: 171, url: "https://github.com/JudgePeach/math-question-bank/releases" }
-                            }
-                        };
-                        openUpdateModal(demoData);
+                        latestReleaseCache = null;
+                        closeUpdateModal();
+                        const status = document.getElementById('aboutUpdateStatusText');
+                        if (status) status.innerText = '无法获取更新信息，下载不可用。';
+                        showToast('无法获取更新信息，下载不可用。', 'warning');
                     });
             }
         };

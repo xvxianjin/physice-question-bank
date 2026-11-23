@@ -1429,8 +1429,8 @@ def test_dashboard_workspace_reuses_read_only_metrics_and_existing_workflows():
         assert element_id in elements
 
     for marker in (
-        "fetch('/api/stats')",
-        "fetch('/api/papers')",
+        "withQuery('/api/stats')",
+        "withQuery('/api/papers')",
         "window.loadDashboardData = loadDashboardData",
         "selectWorkspace('import', '导入中心')",
         "window.startManualQuestion = startManualQuestion",
@@ -1547,7 +1547,7 @@ def test_saved_paper_records_reuses_existing_actions_in_a_dedicated_workspace():
 
     for marker in (
         "async function renderSavedPapersWorkspace()",
-        "fetch('/api/papers')",
+        "withQuery('/api/papers')",
         "loadSavedPaper(${paperId})",
         "quickExportPaperPdf(${paperId})",
         "deleteSavedPaper(${paperId})",
@@ -1865,7 +1865,7 @@ def test_paper_question_answers_are_collapsible_and_loaded_on_demand():
         "expandedAnswerIds: new Set()",
         "window.togglePaperQuestionAnswer",
         "window.collapseAllPaperAnswers",
-        "fetch(`/api/questions/${qid}`)",
+        "withQuery(`/api/questions/${qid}`)",
         "window.parseMarkdownWithMath(answerText, {},",
         'aria-expanded="${answerExpanded ? \'true\' : \'false\'}"',
         "参考答案与解析",
@@ -2502,7 +2502,13 @@ def test_paper_cart_actions_reject_changed_hydration_snapshot_and_are_single_fli
     state_end = paper_source.index("// Fetch one server-paginated page", state_start)
     helper_start = paper_source.index("    function normalizeSectionOrder(")
     helper_end = paper_source.index("    function getPaperTypeOrder(", helper_start)
-    state_source = paper_source[helper_start:helper_end] + paper_source[state_start:state_end]
+    metadata_start = paper_source.index("    function paperMetadataPayload()")
+    metadata_end = paper_source.index("    async function ensureProvinceGroups()", metadata_start)
+    state_source = (
+        paper_source[helper_start:helper_end]
+        + paper_source[metadata_start:metadata_end]
+        + paper_source[state_start:state_end]
+    )
     save_start = paper_source.index("window.savePaperToDb = async function")
     save_end = paper_source.index("// ----------------- Saved Papers", save_start)
     save_source = paper_source[save_start:save_end]

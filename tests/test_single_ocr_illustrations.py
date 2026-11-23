@@ -7,7 +7,11 @@ from types import SimpleNamespace
 from PIL import Image, ImageDraw
 import pytest
 
-from mathbank.ocr_illustrations import materialize_ocr_illustrations, parse_single_ocr_response
+from mathbank.ocr_illustrations import (
+    materialize_ocr_illustrations,
+    parse_single_ocr_response,
+    rebuild_ocr_illustrations,
+)
 from mathbank.prompts import build_single_ocr_vision_prompt
 
 
@@ -40,6 +44,38 @@ def test_single_prompt_requests_all_named_original_figure_slots_once():
     assert "0–1000" in prompt
     assert "不能把图都放到题末" in prompt
     assert "无法可靠定位时bbox为null" in prompt
+
+
+def test_rebuild_keeps_edited_text_and_reuses_source_boxes():
+    result = rebuild_ocr_illustrations("用户改过的前文[插图待补: 图1]后文", [figure()])
+    item = result["illustrations"][0]
+    assert result["markdown"] == "用户改过的前文[插图待补: 图1]后文"
+    assert item["status"] == "pending" and item["anchor_valid"] is True
+    assert item["bbox"] == {"left": 100, "top": 100, "right": 300, "bottom": 400}
+    assert item["placeholder"] == "[插图待补: 图1]"
+
+
+def test_rebuild_rejects_duplicate_slots_boxes_and_missing_slots():
+    duplicate = rebuild_ocr_illustrations("[插图待补: 图1]", [figure(), figure()])
+    assert duplicate["illustrations"][0]["status"] == "unresolved"
+    assert "重复绑定" in duplicate["illustrations"][0]["message"]
+
+    overlapping = rebuild_ocr_illustrations(
+        "[插图待补: 图1][插图待补: 图2]", [figure("图1"), figure("图2")],
+    )
+    assert all(item["status"] == "unresolved" for item in overlapping["illustrations"])
+
+    invalid = rebuild_ocr_illustrations(
+        "[插图待补: 图1]",
+        [{"slot": "图1", "bbox": {"left": 0, "top": 0, "right": 0, "bottom": 0}}],
+    )
+    assert invalid["illustrations"][0]["status"] == "unresolved"
+    assert invalid["illustrations"][0]["bbox"] is None
+
+    with pytest.raises(ValueError, match="没有可补"):
+        rebuild_ocr_illustrations("没有占位", [figure()])
+    with pytest.raises(ValueError, match="配图清单"):
+        rebuild_ocr_illustrations("[插图待补: 图1]", [])
 
 
 def test_disabled_drawing_automatically_inserts_source_crop_without_drawing_or_compiling(tmp_path):

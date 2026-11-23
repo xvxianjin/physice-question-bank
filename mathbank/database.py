@@ -151,6 +151,13 @@ class Question(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     display_order = Column(Integer, nullable=True)
+    subject = Column(
+        String(20), nullable=False, default="math", server_default="math", index=True
+    )  # math / physics
+    course_id = Column(
+        String(64), nullable=False, default="cn_hs_math",
+        server_default="cn_hs_math", index=True,
+    )  # stable course identity from mathbank.resources.courses.json
     content = Column(Text, nullable=False)  # 题干 (LaTeX + markdown)
     question_type = Column(String(50), default="single_choice", index=True)  # single_choice, multi_choice, fill_in_blank, detailed_answer
     category_compulsory = Column(String(100), default="", index=True)  # 必修/选修/选择性必修
@@ -274,6 +281,8 @@ class Question(Base):
     def to_dict(self, version_code: str | None = None, *, sub_knowledge=None):
         return {
             "id": self.id,
+            "subject": self.subject or "math",
+            "course_id": self.course_id or "cn_hs_math",
             "content": self.content,
             "question_type": self.question_type,
             "category_compulsory": self.category_compulsory,
@@ -306,6 +315,8 @@ class Question(Base):
     ):
         return {
             "id": self.id,
+            "subject": self.subject or "math",
+            "course_id": self.course_id or "cn_hs_math",
             "content": self.content,
             "question_type": self.question_type,
             "category_compulsory": self.category_compulsory,
@@ -356,6 +367,10 @@ class QuestionCurriculum(Base):
         nullable=False,
     )
     version_code = Column(String(50), index=True, nullable=False)  # 'A', 'B', 'S'
+    course_id = Column(
+        String(64), nullable=False, default="cn_hs_math",
+        server_default="cn_hs_math", index=True,
+    )
     compulsory = Column(String(100), default="", index=True)
     chapter = Column(String(100), default="", index=True)
     knowledge = Column(String(100), default="", index=True)
@@ -382,6 +397,7 @@ class QuestionCurriculum(Base):
         return {
             "id": self.id,
             "question_id": self.question_id,
+            "course_id": self.course_id or "cn_hs_math",
             "version_code": self.version_code,
             "compulsory": self.compulsory,
             "chapter": self.chapter,
@@ -453,6 +469,10 @@ class KnowledgePointCurriculum(Base):
     id = Column(Integer, primary_key=True)
     point_code = Column(String(100), ForeignKey("knowledge_points.code", ondelete="CASCADE"), nullable=False, index=True)
     version_code = Column(String(50), nullable=False)
+    course_id = Column(
+        String(64), nullable=False, default="cn_hs_math",
+        server_default="cn_hs_math", index=True,
+    )
     compulsory = Column(String(100), nullable=False)
     chapter = Column(String(100), nullable=False)
     knowledge = Column(String(100), nullable=False, default="", server_default="")
@@ -763,9 +783,13 @@ class Paper(Base):
             "subtitle": self.subtitle,
             "paper_type": self.paper_type,
             "total_score": self.total_score,
+            "course_id": meta.get("course_id", "cn_hs_math"),
+            "curriculum_id": meta.get("curriculum_id"),
             "show_secret": meta.get("show_secret", True),
             "show_notice": meta.get("show_notice", True),
             "section_order": normalize_section_order(meta.get("section_order")),
+            "province_group_id": meta.get("province_group_id"),
+            "exam_structure": meta.get("exam_structure"),
             "metadata_json": self.metadata_json,
             "created_at": (self.created_at.isoformat() + "Z") if self.created_at else None
         }
@@ -886,6 +910,9 @@ def init_db():
                 required_columns["questions"].add("content_tikz_assets")
             if current_version >= 10:
                 required_columns["questions"].add("image_layouts")
+            if current_version >= 17:
+                required_columns["questions"].update({"subject", "course_id"})
+                required_columns["question_curriculums"].add("course_id")
             if current_version >= 9:
                 required_columns["questions"].add("figure_size")
                 required_columns["questions"].add("figure_align_custom")

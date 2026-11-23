@@ -73,7 +73,8 @@ def isolated_app(tmp_path):
     def run(source):
         result = subprocess.run(
             [sys.executable, "-B", "-c", PRELUDE + "\n" + textwrap.dedent(source)],
-            cwd=tmp_path, env=environment, text=True, capture_output=True, timeout=60,
+            cwd=tmp_path, env=environment, text=True, encoding="utf-8",
+            capture_output=True, timeout=60,
         )
         assert result.returncode == 0, result.stdout + result.stderr
     return run
@@ -102,7 +103,8 @@ def test_http_and_cli_share_one_read_only_teaching_workflow(isolated_app):
 
         def cli(*arguments):
             result = subprocess.run([sys.executable, '-B', '-m', 'scripts.search_questions',
-                *arguments, '--format', 'json'], text=True, capture_output=True, timeout=30)
+                *arguments, '--format', 'json'], text=True, encoding='utf-8',
+                capture_output=True, timeout=30)
             assert result.returncode == 0, result.stdout + result.stderr
             return json.loads(result.stdout)
 

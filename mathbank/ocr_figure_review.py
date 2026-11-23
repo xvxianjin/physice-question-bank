@@ -32,6 +32,8 @@ from mathbank.ocr_raster_layout import source_pixel_bbox, normalized_bbox, conte
 REVIEW_TIMEOUT_SECONDS = AI_REQUEST_TIMEOUT_SECONDS
 MAX_REVIEW_PNG_BYTES = 24 * 1024 * 1024
 MAX_REVIEW_PIXELS = 16_000_000
+REVIEW_INITIAL_BATCH_SIZE = 3
+REVIEW_CORRECTION_BATCH_SIZE = 2
 _CHECKS = frozenset({"same_figure", "full_graphic", "labels_complete", "no_foreign_content", "correct_anchor"})
 _FIELDS = frozenset({"id", "slot", "source_sha256", "crop_sha256", "decision", "checks", "corrected_bbox", "evidence"})
 
@@ -258,7 +260,7 @@ def _review_data(*, status: str, source_hash: str, crop_hash: str | None, correc
 
 
 def review_single_ocr_figures(result: dict, image_path: str | Path, provider, *, post=None, semaphore=None) -> dict:
-    """Initial batch plus at most one batch of actual corrected crops."""
+    """Initial review plus bounded batches of actual corrected crops."""
     reviewed = deepcopy(result)
     items = reviewed["illustrations"]
     initial_messages = {item["id"]: item["message"] for item in items}
@@ -318,30 +320,43 @@ def review_single_ocr_figures(result: dict, image_path: str | Path, provider, *,
         return reviewed
     available = bool(getattr(provider, "api_key", None) and getattr(provider, "chat_completions_url", None) and getattr(provider, "supports_image_input", False))
     first = {}
-    failure = False
-    failure_code = "provider_unavailable" if not available else ""
+    failure_codes = {}
     if available:
-        try:
-            first = request_figure_review(provider, {"stage": "crop_initial", "markdown": reviewed["markdown"], "figures": records},
-                                          original_png=source_png, crop_pngs=crops, context_pngs=contexts, post=post, semaphore=semaphore,
-                                          on_post=lambda: _record_post(summary))
-            if not _unchanged(snapshot):
-                raise FigureReviewFailure("source_changed")
-        except Exception as error:
-            first = {}
-            failure = True
-            failure_code = _failure_code(error)
+        for offset in range(0, len(records), REVIEW_INITIAL_BATCH_SIZE):
+            batch = records[offset:offset + REVIEW_INITIAL_BATCH_SIZE]
+            batch_ids = [record["id"] for record in batch]
+            entries, code = {}, ""
+            try:
+                entries = request_figure_review(provider, {"stage": "crop_initial", "markdown": reviewed["markdown"], "figures": batch},
+                                                original_png=source_png,
+                                                crop_pngs={identifier: crops[identifier] for identifier in batch_ids if identifier in crops},
+                                                context_pngs={identifier: contexts[identifier] for identifier in batch_ids if identifier in contexts},
+                                                post=post, semaphore=semaphore,
+                                                on_post=lambda: _record_post(summary))
+                if not _unchanged(snapshot):
+                    raise FigureReviewFailure("source_changed")
+                first.update(entries)
+            except Exception as error:
+                entries = {}
+                code = _failure_code(error)
+                failure_codes.update({identifier: code for identifier in batch_ids})
+            _log_review("crop_initial", entries, code)
+            if code == "source_changed":
+                for record in records[offset + REVIEW_INITIAL_BATCH_SIZE:]:
+                    failure_codes[record["id"]] = "source_changed"
+                break
     else:
-        failure = True
-    _log_review("crop_initial", first, failure_code)
+        failure_codes = {record["id"]: "provider_unavailable" for record in records}
+    failure = bool(failure_codes)
     all_boxes = {item["id"]: item["bbox"] for item in items}
     proposals, accepted = {}, {}
     for item in eligible:
         entry = first.get(item["id"])
         item["review"]["attempts"] = summary["crop_calls"]
         if entry is None:
-            item["review"]["status"] = "unavailable" if failure else "unverified"
-            item["review"]["failure_code"] = failure_code or "missing_figure"
+            code = failure_codes.get(item["id"], "")
+            item["review"]["status"] = "unavailable" if code else "unverified"
+            item["review"]["failure_code"] = code or "missing_figure"
             continue
         failed_checks = [name for name, passed in entry["checks"].items() if not passed]
         item["review"].update(evidence=entry["evidence"], checks=entry["checks"], failed_checks=failed_checks,
@@ -358,19 +373,24 @@ def review_single_ocr_figures(result: dict, image_path: str | Path, provider, *,
     if proposals:
         competing = {**all_boxes, **proposals}
         proposals = {identifier: bbox for identifier, bbox in proposals.items() if _safe_box(bbox, all_boxes[identifier], identifier, competing, image.size)}
-    second_records, second_crops, second_contexts = [], {}, {}
-    for record in records:
-        identifier = record["id"]
-        if identifier not in proposals:
+    records_by_id = {record["id"]: record for record in records}
+    items_by_id = {item["id"]: item for item in items}
+    corrected_records = {}
+    proposal_ids = list(proposals)
+    for offset in range(0, len(proposal_ids), REVIEW_CORRECTION_BATCH_SIZE):
+        batch_ids = proposal_ids[offset:offset + REVIEW_CORRECTION_BATCH_SIZE]
+        second_records, second_crops, second_contexts = [], {}, {}
+        for identifier in batch_ids:
+            record = records_by_id[identifier]
+            try:
+                crop = prepare_ocr_figure_crop(image, proposals[identifier])
+            except (ValueError, OSError):
+                continue
+            second_crops[identifier] = crop
+            second_records.append(_enrich_record({**record, "bbox": proposals[identifier], "crop_sha256": _sha(crop)}, image, crop, components, second_contexts))
+        if not second_records:
             continue
-        try:
-            crop = prepare_ocr_figure_crop(image, proposals[identifier])
-        except (ValueError, OSError):
-            continue
-        second_crops[identifier] = crop
-        second_records.append(_enrich_record({**record, "bbox": proposals[identifier], "crop_sha256": _sha(crop)}, image, crop, components, second_contexts))
-    second_failure = ""
-    if second_records:
+        second_failure = ""
         try:
             second = request_figure_review(provider, {"stage": "crop_corrected", "markdown": reviewed["markdown"], "figures": second_records},
                                            original_png=source_png, crop_pngs=second_crops, context_pngs=second_contexts, post=post, semaphore=semaphore,
@@ -382,18 +402,19 @@ def review_single_ocr_figures(result: dict, image_path: str | Path, provider, *,
             second = {}
             second_failure = _failure_code(error)
         _log_review("crop_corrected", second, second_failure)
-        for item in eligible:
-            if item["id"] not in second_crops:
-                continue
-            item["review"].update(attempts=summary["crop_calls"], corrected=True, crop_sha256=_sha(second_crops[item["id"]]),
-                                 stage="crop_corrected", failure_code=second_failure or "missing_figure", failed_checks=[], bbox=deepcopy(proposals[item["id"]]))
-            entry = second.get(item["id"])
+        for identifier in second_crops:
+            item = items_by_id[identifier]
+            record = next(record for record in second_records if record["id"] == identifier)
+            item["review"].update(attempts=summary["crop_calls"], corrected=True, crop_sha256=_sha(second_crops[identifier]),
+                                 stage="crop_corrected", failure_code=second_failure or "missing_figure", failed_checks=[], bbox=deepcopy(proposals[identifier]))
+            entry = second.get(identifier)
             if entry is not None:
+                corrected_records[identifier] = record
                 item["review"].update(evidence=entry["evidence"], checks=entry["checks"],
                                      failed_checks=[name for name, passed in entry["checks"].items() if not passed],
                                      failure_code="model_uncertain" if entry["decision"] == "uncertain" else "checks_failed")
                 if entry["decision"] == "accepted" and all(entry["checks"].values()):
-                    accepted[item["id"]] = (proposals[item["id"]], second_crops[item["id"]], entry, True)
+                    accepted[identifier] = (proposals[identifier], second_crops[identifier], entry, True)
     # Even a failed/malformed second response may have changed source pixels
     # while the first batch's accepted evidence was waiting to be published.
     if not _unchanged(snapshot):
@@ -412,14 +433,16 @@ def review_single_ocr_figures(result: dict, image_path: str | Path, provider, *,
         reviewed["warnings"] = [message for message in reviewed["warnings"] if message != obsolete]
         item["review"] = _review_data(status="verified", source_hash=source_hash, crop_hash=_sha(crop),
             corrected=corrected, evidence=entry["evidence"], checks=entry["checks"], attempts=2 if corrected else 1)
-        record = next(record for record in (second_records if corrected else records) if record["id"] == item["id"])
+        record = corrected_records.get(item["id"]) if corrected else records_by_id[item["id"]]
         item["review"].update(stage="crop_corrected" if corrected else "crop_initial", failure_code="", failed_checks=[], bbox=deepcopy(bbox),
             **{key: record[key] for key in ("source_dimensions", "crop_dimensions", "bbox_pixels", "source_context", "raster_candidates")})
         reviewed["_verified_crops"][item["id"]] = {"id": item["id"], "slot": item["slot"], "bbox": deepcopy(bbox),
                                                    "source_sha256": source_hash, "crop_sha256": _sha(crop)}
     summary["verified"] = len(accepted)
     summary["corrected"] = sum(bool(item["review"]["corrected"]) for item in items if item["review"]["status"] == "verified")
-    summary["status"] = "verified" if len(accepted) == len(items) else "unavailable" if failure else "partial"
+    summary["status"] = ("verified" if len(accepted) == len(items)
+                         else "partial" if accepted
+                         else "unavailable" if failure else "partial")
     summary["warnings"] = list(dict.fromkeys(message for message in reviewed["warnings"] if message not in result["warnings"]))
     summary["failures"] = [{key: item["review"].get(key) for key in ("stage", "failure_code", "failed_checks", "bbox", "proposed_bbox")}
                            | {"id": item["id"], "slot": item["slot"]} for item in items if item["review"]["status"] != "verified"]

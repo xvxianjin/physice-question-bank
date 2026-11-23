@@ -41,6 +41,7 @@ from mathbank.database import (
     QuestionKnowledgePoint, QuestionReference, QuestionSourceLabel,
 )
 from mathbank.curriculums import CURRICULUM_NAMES
+from mathbank.courses import CourseScopeError, require_available_course
 from mathbank.storage_access import check_directory_access
 from mathbank.image_layout import image_key, normalize_image_layouts
 from mathbank.knowledge_points import METADATA_FIELDS, apply_knowledge_point_filters, is_zxxk_catalog_code
@@ -77,11 +78,24 @@ _NULLABLE_LOCATION_FIELDS = frozenset({
 _RECORD_FIELDS = set(_TEXT_FIELDS) | {"id", "sub_knowledge", "knowledge_points", "has_answer", "image_paths",
     "tikz_reference_image_path", "content_tikz_assets", "answer_tikz_assets", "figure_align",
     "figure_align_custom", "figure_size", "image_layouts", "usage_count", "created_at",
-    "active_version_code", "curriculum_mappings", "source_labels", "question_references"}
+    "active_version_code", "curriculum_mappings", "source_labels", "question_references",
+    "subject", "course_id"}
 _POINT_FIELDS = {"code", "name", "original_name", "source", "aliases", "curriculum_paths",
                  "role", "status", "position", *METADATA_FIELDS}
 _REFERENCE_FIELDS = ("field", "start", "end", "text", "label_key", "book_key",
                      "field_sha256", "prefix", "suffix", "resolution_state", "reason")
+
+
+def _validate_transfer_course(course_id, subject=None):
+    """Reject packages for courses that cannot yet persist question data."""
+
+    try:
+        course = require_available_course(course_id)
+    except CourseScopeError as exc:
+        raise ValueError("分享包包含尚未开放或无法识别的课程") from exc
+    if subject is not None and course["subject"] != subject:
+        raise ValueError("分享包学科与课程归属不匹配")
+    return course
 
 
 def _progress(callback, stage, current=0, total=0):
@@ -323,17 +337,23 @@ def _validate_point(point):
         raise ValueError("分享包知识点教材路径无效")
     seen = set()
     for path in paths:
-        if not isinstance(path, dict) or set(path) != {"version_code", "compulsory", "chapter", "knowledge", "reference_section", "level"}:
+        if not isinstance(path, dict) or set(path) - {"version_code", "course_id", "compulsory", "chapter", "knowledge", "reference_section", "level"} or not {"version_code", "compulsory", "chapter", "knowledge", "reference_section", "level"}.issubset(path):
             raise ValueError("分享包知识点教材路径字段无效")
-        for field in ("version_code", "compulsory", "chapter", "knowledge", "reference_section"):
-            _text(path[field], field, 200)
+        for field in ("version_code", "course_id", "compulsory", "chapter", "knowledge", "reference_section"):
+            if field in path:
+                _text(path[field], field, 200)
+        if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", path.get("course_id", "cn_hs_math")):
+            raise ValueError("分享包知识点课程标识无效")
+        _validate_transfer_course(path.get("course_id", "cn_hs_math"))
         # The startup schema validator requires chapter paths to have no
         # section, and leaf/parent paths to retain a nonempty section.
         if (path["level"] not in ("leaf", "parent", "chapter")
                 or (path["level"] == "chapter") != (not path["knowledge"])
-                or tuple(path[field] for field in ("version_code", "compulsory", "chapter", "knowledge", "reference_section", "level")) in seen):
+                or tuple(path.get(field, "cn_hs_math" if field == "course_id" else "")
+                         for field in ("course_id", "version_code", "compulsory", "chapter", "knowledge", "reference_section", "level")) in seen):
             raise ValueError("分享包知识点教材路径重复或层级无效")
-        seen.add(tuple(path[field] for field in ("version_code", "compulsory", "chapter", "knowledge", "reference_section", "level")))
+        seen.add(tuple(path.get(field, "cn_hs_math" if field == "course_id" else "")
+                       for field in ("course_id", "version_code", "compulsory", "chapter", "knowledge", "reference_section", "level")))
     if point.get("role") not in ("main", "auxiliary") or point.get("status") not in ("confirmed", "suggested"):
         raise ValueError("分享包知识点角色或状态无效")
     if type(point.get("position", 0)) is not int or point.get("position", 0) < 0:
@@ -369,6 +389,15 @@ class _RecordValidator:
         for field, maximum in _TEXT_FIELDS.items():
             _text(record.get(field, ""), field, maximum, empty=field != "content",
                   nullable=field in _NULLABLE_LOCATION_FIELDS)
+        subject = record.get("subject", "math")
+        course_id = record.get("course_id", "cn_hs_math")
+        if subject not in ("math", "physics"):
+            raise ValueError("分享包学科归属无效")
+        if not isinstance(course_id, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", course_id):
+            raise ValueError("分享包课程归属无效")
+        if subject == "math" and course_id != "cn_hs_math":
+            raise ValueError("分享包数学题目课程归属无效")
+        _validate_transfer_course(course_id, subject)
         if record.get("figure_align", "right") not in ("right", "center", "bottom_left", "bottom_right") or record.get("figure_size", "auto") not in ("auto", "small", "medium", "large"):
             raise ValueError("分享包插图排版无效")
         if type(record.get("figure_align_custom", False)) is not bool:
@@ -407,16 +436,43 @@ class _RecordValidator:
             raise ValueError("分享包教材映射无效")
         versions = set()
         for mapping in mappings:
-            if not isinstance(mapping, dict) or set(mapping) - {"version_code", "compulsory", "chapter", "knowledge", "sub_knowledge"}:
+            if not isinstance(mapping, dict) or set(mapping) - {"course_id", "version_code", "compulsory", "chapter", "knowledge", "sub_knowledge"}:
                 raise ValueError("分享包教材映射无效或含未知字段")
             version = _text(mapping.get("version_code"), "version_code", 50, empty=False)
-            if version in versions:
+            mapping_course = mapping.get("course_id", "cn_hs_math")
+            if not isinstance(mapping_course, str) or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", mapping_course):
+                raise ValueError("分享包教材映射课程归属无效")
+            mapping_course_entry = _validate_transfer_course(mapping_course)
+            if mapping_course != course_id:
+                raise ValueError("分享包教材映射与题目课程不一致")
+            if (mapping_course, version) in versions:
                 raise ValueError("分享包教材版本重复")
-            versions.add(version)
+            versions.add((mapping_course, version))
             for field in ("compulsory", "chapter", "knowledge"):
                 _text(mapping.get(field, ""), field, 100, nullable=True)
+            if mapping_course_entry["subject"] == "physics":
+                from mathbank.course_curriculum import (
+                    CourseCurriculumError, curriculum_tree, resolve_curriculum_id,
+                    validate_question_location,
+                )
+                try:
+                    resolved_version = resolve_curriculum_id(
+                        mapping_course_entry, version,
+                    )
+                    tree = curriculum_tree(mapping_course_entry, resolved_version)
+                    validate_question_location(
+                        tree,
+                        mapping.get("compulsory", ""),
+                        mapping.get("chapter", ""),
+                        mapping.get("knowledge", ""),
+                        field_prefix="分享包物理分类",
+                    )
+                except CourseCurriculumError as exc:
+                    raise ValueError(str(exc)) from exc
             normalize_sub_knowledge(mapping.get("sub_knowledge", []))
         points = record.get("knowledge_points", [])
+        if _validate_transfer_course(course_id, subject)["subject"] == "physics" and points:
+            raise ValueError("物理课程题目不能携带数学知识点标签")
         if not isinstance(points, list) or len(points) > 64:
             raise ValueError("分享包题目知识点无效")
         codes = set()
@@ -688,8 +744,18 @@ def _read_package(archive_path, *, stage_dir=None, progress=None):
             if source_version not in CURRICULUM_NAMES:
                 raise ValueError("分享包教材版本无效")
             referenced, definitions = validator.assets, validator.definitions
-            if any(record.get("active_version_code") != source_version for record in records):
-                raise ValueError("分享包题目教材版本与清单不一致")
+            from mathbank.course_curriculum import default_curriculum_id
+            for record in records:
+                record_course = _validate_transfer_course(
+                    record.get("course_id", "cn_hs_math"),
+                    record.get("subject", "math"),
+                )
+                record_version = record.get("active_version_code")
+                if record_course["id"] == "cn_hs_math":
+                    if record_version != source_version:
+                        raise ValueError("分享包题目教材版本与清单不一致")
+                elif record_version != default_curriculum_id(record_course):
+                    raise ValueError("分享包物理题目目录与课程不一致")
             if referenced != asset_paths:
                 raise ValueError("分享包图片缺失或含未引用图片")
             if (type(manifest.get("question_count")) is not int or manifest["question_count"] != len(records)
@@ -1036,6 +1102,8 @@ def _prepare_import_rows(package, staged_uploads, rows, progress):
     _progress(progress, "fingerprinting", 0, total)
     for index, record in enumerate(package["records"], 1):
         values = {field: record.get(field, "") for field in _TEXT_FIELDS}
+        values["subject"] = record.get("subject", "math")
+        values["course_id"] = record.get("course_id", "cn_hs_math")
         for field in ("content", "answer_markdown", "review"):
             values[field] = rewrite_question_asset_paths(values[field], replacements)
         values.update(
@@ -1176,21 +1244,38 @@ def import_library_zip(db, archive_path: Path, *, uploads_dir: Path, active_vers
             mappings = record.get("curriculum_mappings", [])
             for mapping in mappings:
                 row = QuestionCurriculum(**{field: null() if mapping.get(field, "") is None else mapping.get(field, "")
-                                            for field in ("version_code", "compulsory", "chapter", "knowledge")})
+                                            for field in ("course_id", "version_code", "compulsory", "chapter", "knowledge")})
+                row.course_id = mapping.get("course_id") or question.course_id
                 row.sub_knowledge = mapping.get("sub_knowledge", [])
                 question.curriculum_mappings.append(row)
             # Source location belongs only to the exporting textbook. A
             # missing receiving mirror remains explicitly unclassified.
-            source_version = package["active_version_code"]
-            if not any(row.version_code == source_version for row in question.curriculum_mappings):
+            from mathbank.course_curriculum import default_curriculum_id
+            question_course = _validate_transfer_course(
+                question.course_id or "cn_hs_math", question.subject,
+            )
+            if question_course["id"] == "cn_hs_math":
+                question_active_version = active_version
+                source_version = package["active_version_code"]
+            else:
+                question_active_version = default_curriculum_id(question_course)
+                source_version = question_active_version
+            if not any(row.course_id == question.course_id and row.version_code == source_version
+                       for row in question.curriculum_mappings):
                 source_mapping = QuestionCurriculum(version_code=source_version, **{
                     field: null() if values["category_" + field] is None else values["category_" + field]
                     for field in ("compulsory", "chapter", "knowledge")})
+                source_mapping.course_id = question.course_id
                 source_mapping.sub_knowledge = record.get("sub_knowledge", [])
                 question.curriculum_mappings.append(source_mapping)
-            active = next((row for row in question.curriculum_mappings if row.version_code == active_version), None)
+            active = next((row for row in question.curriculum_mappings
+                           if row.course_id == question.course_id
+                           and row.version_code == question_active_version), None)
             if active is None:
-                active = QuestionCurriculum(version_code=active_version, compulsory="", chapter="", knowledge="")
+                active = QuestionCurriculum(
+                    course_id=question.course_id, version_code=question_active_version,
+                    compulsory="", chapter="", knowledge="",
+                )
                 question.curriculum_mappings.append(active)
             question.category_compulsory, question.category_chapter, question.category_knowledge = active.compulsory, active.chapter, active.knowledge
             for position, (item, metadata) in enumerate(zip(record.get("knowledge_points", []), point_metadata, strict=True)):

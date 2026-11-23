@@ -17,6 +17,8 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+import mathbank
+
 from mathbank.paths import PROJECT_ROOT, project_instance_id
 from mathbank.storage_access import StorageAccessError, check_startup_storage
 
@@ -25,7 +27,7 @@ BASE_URL = f"http://127.0.0.1:{PORT}"
 ACTIVE_ROOT = PROJECT_ROOT
 MAX_PORT_ATTEMPTS = 20
 UNVERIFIED_PORTS: set[int] = set()
-REPOSITORY = "JudgePeach/math-question-bank"
+REPOSITORY = getattr(mathbank, "UPSTREAM_REPO", "JudgePeach/math-question-bank")
 IMPORT_CHECK = (
     "import fastapi,uvicorn,sqlalchemy,greenlet,colorama,multipart,dotenv,"
     "requests,PIL,docx,lxml,defusedxml,olefile,exceptiongroup,sniffio;"
@@ -167,10 +169,12 @@ def _legacy_service_matches(version: dict) -> bool:
 def existing_service_ready() -> bool:
     try:
         version = read_json("/api/version")
-        if not isinstance(version, dict) or version.get("repo") != REPOSITORY:
+        if not isinstance(version, dict):
             return False
         legacy = "project_instance_id" not in version
         if legacy:
+            if version.get("repo") != REPOSITORY:
+                return False
             if not _legacy_service_matches(version):
                 UNVERIFIED_PORTS.add(PORT)
                 return False

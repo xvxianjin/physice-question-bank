@@ -146,6 +146,70 @@ def test_old_share_without_source_documents_still_validates_and_imports(share, t
         assert transfer.import_library_zip(db, package, uploads_dir=tmp_path / "uploads")["imported_count"] == 2
 
 
+@pytest.mark.parametrize("kind", ("question", "mapping"))
+def test_share_rejects_cross_course_physics_persistence(share, tmp_path, kind):
+    package, _ = share
+
+    def mutate(records):
+        if kind == "question":
+            records[0].update(subject="physics", course_id="cn_hs_physics")
+        else:
+            records[0]["curriculum_mappings"][0]["course_id"] = "cn_hs_physics"
+
+    rewrite_zip(package, mutate_records=mutate)
+    with isolated_db(tmp_path / f"planned-{kind}.db") as db:
+        with pytest.raises(ValueError):
+            transfer.import_library_zip(
+                db, package, uploads_dir=tmp_path / f"uploads-{kind}"
+            )
+        assert db.query(Question).count() == 0
+
+
+def test_physics_share_roundtrip_preserves_course_ownership(tmp_path):
+    uploads = tmp_path / "source_uploads"
+    uploads.mkdir()
+    package = tmp_path / "physics.zip"
+    with isolated_db(tmp_path / "source.db") as db:
+        question = Question(
+            content="质点参考系物理题",
+            question_type="single_choice",
+            subject="physics",
+            course_id="cn_hs_physics",
+            category_compulsory="必修第一册",
+            category_chapter="运动的描述",
+            category_knowledge="质点 参考系",
+        )
+        question.curriculum_mappings = [QuestionCurriculum(
+            course_id="cn_hs_physics",
+            version_code="cn_physics_renjiao_2019",
+            compulsory="必修第一册",
+            chapter="运动的描述",
+            knowledge="质点 参考系",
+        )]
+        db.add(question)
+        db.commit()
+        assert transfer.export_library_zip(
+            db, package, uploads_dir=uploads,
+        )["question_count"] == 1
+
+    with isolated_db(tmp_path / "target.db") as db:
+        result = transfer.import_library_zip(
+            db, package, uploads_dir=tmp_path / "target_uploads",
+        )
+        imported = db.get(Question, result["id_map"][1])
+        assert (imported.subject, imported.course_id) == (
+            "physics", "cn_hs_physics",
+        )
+        mapping = imported.curriculum_mappings[0]
+        assert mapping.course_id == "cn_hs_physics"
+        assert mapping.version_code == "cn_physics_renjiao_2019"
+        assert (
+            imported.category_compulsory,
+            imported.category_chapter,
+            imported.category_knowledge,
+        ) == ("必修第一册", "运动的描述", "质点 参考系")
+
+
 @pytest.mark.parametrize("kind", ("missing", "hash", "invalid_json", "invalid_text", "flag", "unlisted"))
 def test_share_rejects_invalid_source_document_members_before_import(share, tmp_path, kind):
     package, _ = share

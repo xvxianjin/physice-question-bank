@@ -146,7 +146,7 @@
             if (typeof window.setQuestionDetailEditAvailability === 'function') {
                 window.setQuestionDetailEditAvailability(false);
             }
-            document.getElementById('editorTitle').textContent = '录入新数学题';
+            document.getElementById('editorTitle').textContent = `录入新${window.MathBankCourse ? window.MathBankCourse.questionLabel() : '数学题'}`;
             
             document.getElementById('editContent').value = '';
             document.getElementById('editSource').value = '';
@@ -182,6 +182,17 @@
             backupEditorState(null, null);
         }
 
+        startNewQuestionWithoutPrompt.isDirty = function () {
+            const content = document.getElementById('editContent');
+            const answer = document.getElementById('editAnswerMarkdown');
+            return Boolean(
+                EditorState.questionId
+                || (content && content.value.trim())
+                || (answer && answer.value.trim())
+            );
+        };
+        window.resetEditorForCourseChange = startNewQuestionWithoutPrompt;
+
         // Toast Helper
         function switchWorkflowTab(tabId) {
             const tabs = ['ai', 'ocr', 'image'];
@@ -212,7 +223,7 @@
                 }
                 cancelAllOcr(); // Cancel any active OCR requests!
                 EditorState.reset();
-                document.getElementById('editorTitle').textContent = '录入新数学题';
+                document.getElementById('editorTitle').textContent = `录入新${window.MathBankCourse ? window.MathBankCourse.questionLabel() : '数学题'}`;
                 
                 document.getElementById('editContent').value = '';
                 document.getElementById('editSource').value = '';
@@ -269,7 +280,7 @@
             if (typeof window.setQuestionDetailEditAvailability === 'function') {
                 window.setQuestionDetailEditAvailability(false);
             }
-            document.getElementById('editorTitle').textContent = '录入新数学题';
+            document.getElementById('editorTitle').textContent = `录入新${window.MathBankCourse ? window.MathBankCourse.questionLabel() : '数学题'}`;
 
             document.getElementById('editContent').value = '';
             document.getElementById('editSource').value = '';
@@ -326,7 +337,7 @@
             // Reload list styling selection
             loadQuestions();
             
-            showToast('开始录入新数学题！');
+            showToast(`开始录入新${window.MathBankCourse ? window.MathBankCourse.questionLabel() : '数学题'}！`);
 
             // Reset the original state directly from the DOM!
             backupEditorState(null, null);
@@ -440,6 +451,7 @@
             if (options.seqNum) params.set('seq_num', options.seqNum);
             else if (options.questionId) params.set('question_id', options.questionId);
             else params.set('q', options.query || '');
+            if (window.MathBankCourse) window.MathBankCourse.appendTo(params);
             const isCurrent = () => EditorState.isCurrent(session)
                 && sequence === relatedDropdownLoadSequence;
             updateRelatedCandidatePagination('查找中...');
@@ -604,6 +616,7 @@
             try {
                 const formData = new FormData();
                 formData.append('target_id', targetId);
+                if (window.MathBankCourse) window.MathBankCourse.bodyData(formData);
 
                 const res = await fetch(`/api/questions/${session.questionId}/associate`, {
                     method: 'POST',
@@ -653,7 +666,9 @@
             const sequence = ++relatedListLoadSequence;
             cancelRelatedCandidateLoad();
             if (relatedListController) relatedListController.abort();
-            return fetch(`/api/questions/${session.questionId}/associated`, { method: 'DELETE' })
+            return fetch(window.MathBankCourse
+                ? window.MathBankCourse.withQuery(`/api/questions/${session.questionId}/associated`)
+                : `/api/questions/${session.questionId}/associated`, { method: 'DELETE' })
                 .then(r => {
                     if (!r.ok) throw new Error('解除关联请求失败');
                     return r.json();
@@ -708,7 +723,9 @@
                 return refreshRelatedDropdown('', { session, isCurrent, expectedValue: selectionAtRequest, items: [] });
             }
             
-            return fetch(`/api/questions/${questionId}/associated`, {signal: controller.signal})
+            return fetch(window.MathBankCourse
+                ? window.MathBankCourse.withQuery(`/api/questions/${questionId}/associated`)
+                : `/api/questions/${questionId}/associated`, {signal: controller.signal})
                 .then(r => {
                     if (!r.ok) throw new Error('无法加载已关联题目');
                     return r.json();
@@ -779,7 +796,9 @@
             const controller = new AbortController();
             referenceRefreshController = controller;
             try {
-                const response = await fetch(`/api/questions/${session.questionId}`, {signal: controller.signal});
+                const response = await fetch(window.MathBankCourse
+                    ? window.MathBankCourse.withQuery(`/api/questions/${session.questionId}`)
+                    : `/api/questions/${session.questionId}`, {signal: controller.signal});
                 if (!response.ok) return false;
                 const question = await response.json();
                 if (sequence !== referenceRefreshSequence || !EditorState.isCurrent(session)
@@ -871,7 +890,9 @@
             updateQuestionSaveButtonState();
 
             // Lazy-load details asynchronously
-            fetch(`/api/questions/${requestedQuestionId}`, {signal: controller.signal})
+            fetch(window.MathBankCourse
+                ? window.MathBankCourse.withQuery(`/api/questions/${requestedQuestionId}`)
+                : `/api/questions/${requestedQuestionId}`, {signal: controller.signal})
                 .then(r => {
                     if (!r.ok) throw new Error('无法加载题目详情');
                     return r.json();
@@ -911,7 +932,7 @@
                     }
                     resetRelatedQuestionPicker();
                     EditorState.useQuestion(fullItem);
-                    document.getElementById('editorTitle').textContent = '编辑数学题';
+                    document.getElementById('editorTitle').textContent = `编辑${window.MathBankCourse ? window.MathBankCourse.questionLabel() : '数学题'}`;
 
                     // Clear previous OCR state only after the question switch commits.
                     clearContentOcrPreview();
@@ -1211,6 +1232,9 @@
                 }
                 
                 const formData = new FormData();
+                const courseScope = window.MathBankCourse?.params?.() || {};
+                if (courseScope.course_id) formData.append('course_id', courseScope.course_id);
+                if (courseScope.curriculum_id) formData.append('curriculum_id', courseScope.curriculum_id);
                 formData.append('content', content);
                 formData.append('question_type', qtype);
                 formData.append('category_compulsory', compulsory);
@@ -1380,7 +1404,7 @@
                             // input typed after the POST response arrived.
                             EditorState.useQuestion(data.question);
                             backupEditorState(data.question.id, null, savedBackupSnapshot);
-                            document.getElementById('editorTitle').textContent = '编辑数学题';
+                            document.getElementById('editorTitle').textContent = `编辑${window.MathBankCourse ? window.MathBankCourse.questionLabel() : '数学题'}`;
                             if (!requestStillVisible) {
                                 showToast('题目已保存；保存后继续输入的内容仍待再次保存', 'info');
                             }
@@ -1763,6 +1787,7 @@
             formData.append('review_markdown', document.getElementById('editReview').value);
             if (context.version) formData.append('expected_version_code', context.version);
             if (quality) formData.append('quality', quality);
+            if (window.MathBankCourse) window.MathBankCourse.bodyData(formData);
             
             return fetch('/api/ai/classify', {
                 method: 'POST',
@@ -1985,7 +2010,9 @@
                 return;
             }
             if (confirm('确认要在本地库中彻底删除此题目吗？不可恢复！')) {
-                fetch(`/api/questions/${id}`, {
+                fetch(window.MathBankCourse
+                    ? window.MathBankCourse.withQuery(`/api/questions/${id}`)
+                    : `/api/questions/${id}`, {
                     method: 'DELETE'
                 })
                 .then(r => r.json())
@@ -4699,7 +4726,7 @@
 
             // Handle Word (.docx) branch
             if (window.currentDocxFile) {
-                document.getElementById('importLoadingText').textContent = '正在上传 Word 试卷并安全提取数学公式与高清插图...';
+                document.getElementById('importLoadingText').textContent = '正在上传 Word 试卷并安全提取公式与高清插图...';
                 appendImportLog('开始上传 Word (.docx) 试卷文件...', 'current');
                 document.getElementById('importProgressBarContainer').classList.remove('hidden');
                 document.getElementById('importProgressBar').style.width = '0%';
@@ -4711,6 +4738,7 @@
                 docxFormData.append('paper_title', title);
                 docxFormData.append('generate_answers', generateAnswers ? "true" : "false");
                 docxFormData.append('docx_verify_suspicions', selectedDocxSourceVerification() ? 'true' : 'false');
+                if (window.MathBankCourse) window.MathBankCourse.bodyData(docxFormData);
 
                 fetch('/api/upload/docx-task', {
                     method: 'POST',
@@ -4807,6 +4835,7 @@
                     pdfFormData.append('whole_page_ocr_dpi', document.getElementById('pdfWholePageOcrDpi')?.value || '150');
                 }
                 if (pdfParseProvider) pdfFormData.append('pdf_parse_model', `${pdfParseProvider}/${pdfParseModel}`);
+                if (window.MathBankCourse) window.MathBankCourse.bodyData(pdfFormData);
 
                 fetch('/api/upload/pdf-task', {
                     method: 'POST',
@@ -4918,7 +4947,7 @@
                     let parseBrand = 'AI';
                     document.getElementById('importLoadingText').textContent = `${parseBrand} 正在智能分析并拆解试卷，请稍候...`;
                     appendImportLog(`正在调用 ${parseModelFriendly} 教研大模型进行试题智能分割与属性匹配...`, 'current');
-                    appendImportLog('大纲映射范围：高中人教版A 必修一至选择性必修三。请耐心等候...', 'info');
+                    appendImportLog(`大纲映射范围：${window.MathBankCourse?.active?.curriculumName || '高中人教版A 必修一至选择性必修三'}。请耐心等候...`, 'info');
 
                     const parseFormData = new FormData();
                     parseFormData.append('latex_content', latex);
@@ -4926,6 +4955,7 @@
                     parseFormData.append('paper_title', title);
                     parseFormData.append('image_mapping_json', JSON.stringify(imageMapping));
                     parseFormData.append('generate_answers', generateAnswers ? "true" : "false");
+                    if (window.MathBankCourse) window.MathBankCourse.bodyData(parseFormData);
 
                     return fetch('/api/ai/parse-paper', {
                         method: 'POST',
@@ -4948,7 +4978,7 @@
                     if (!isCurrentDocumentImportTask(importTaskGeneration) || !data) return;
                     if (data.status === 'success') {
                         replaceParsedQuestions(data.questions);
-                        appendImportLog(`试卷成功拆解完成！共提取出 ${parsedQuestionsData.length} 道高定数学题。`, 'success');
+                        appendImportLog(`试卷成功拆解完成！共提取出 ${parsedQuestionsData.length} 道${window.MathBankCourse ? window.MathBankCourse.questionLabel() : '数学题'}。`, 'success');
                         const texDiagnostics = data.tex_diagnostics || {};
                         const estimatedCount = texDiagnostics.question_count_estimate || 0;
                         const actualCount = texDiagnostics.question_count_actual || parsedQuestionsData.length;
@@ -5306,7 +5336,7 @@
                                 : '原文件与逐页识图稿已保存；题卡尚未整理，请展开逐页工作稿核对原因。')
                             : structureReview.incomplete
                             ? `${documentLabel} 原文已保留，当前整理出 ${parsedQuestionsData.length} 道题；拆题尚未全部完成。`
-                            : `${documentLabel} 试卷分析并拆解成功！共分析出 ${parsedQuestionsData.length} 道数学题。`, structureReview.incomplete ? 'warning' : 'success');
+                            : `${documentLabel} 试卷分析并拆解成功！共分析出 ${parsedQuestionsData.length} 道${window.MathBankCourse ? window.MathBankCourse.questionLabel() : '数学题'}。`, structureReview.incomplete ? 'warning' : 'success');
                         if (structureReview.incomplete) structureReview.lines.forEach(line => appendImportLog(line, 'warning'));
                         if (isWordTask && task.diagnostics) {
                             const report = task.diagnostics;
@@ -5787,7 +5817,9 @@
                         'Content-Type': 'application/json',
                         'X-Local-Token': localStorage.getItem('local_token') || ''
                     },
-                    body: JSON.stringify({ items: items, max_candidates: 5 }),
+                    body: JSON.stringify(window.MathBankCourse
+                        ? window.MathBankCourse.bodyData({ items: items, max_candidates: 5 })
+                        : { items: items, max_candidates: 5 }),
                     signal: controller.signal
                 });
             } catch (error) {
@@ -6224,7 +6256,9 @@
                     mathRendered = true;
                     try {
                         if (!candidate.id) throw new Error('候选题标识缺失');
-                        const response = await fetch(`/api/questions/${Number(candidate.id)}`);
+                        const response = await fetch(window.MathBankCourse
+                            ? window.MathBankCourse.withQuery(`/api/questions/${Number(candidate.id)}`)
+                            : `/api/questions/${Number(candidate.id)}`);
                         if (!response.ok) throw new Error(`HTTP ${response.status}`);
                         const fullQuestion = await response.json();
                         window.renderQuestionPreviewContent(
@@ -7243,6 +7277,7 @@
                     ? currentDuplicatePayload.image_paths
                     : safeDuplicateImagePaths(q.image_paths);
                 formData.append('image_paths', JSON.stringify(safeImagePaths));
+                if (window.MathBankCourse) window.MathBankCourse.bodyData(formData);
                 if (duplicateSnapshotHash) {
                     formData.append('duplicate_snapshot_hash', duplicateSnapshotHash);
                 }
@@ -8651,6 +8686,7 @@
                 }
                 const thinkingToggle = document.getElementById('aiThinkingToggle');
                 formData.append('thinking', thinkingToggle && thinkingToggle.checked ? 'enabled' : 'disabled');
+                if (window.MathBankCourse) window.MathBankCourse.bodyData(formData);
 
                 const res = await fetch('/api/ai/solve', {
                     method: 'POST',
@@ -8773,6 +8809,7 @@
                         }
                         const thinkingToggle = document.getElementById('aiThinkingToggle');
                         formData.append('thinking', thinkingToggle && thinkingToggle.checked ? 'enabled' : 'disabled');
+                        if (window.MathBankCourse) window.MathBankCourse.bodyData(formData);
 
                         const res = await fetch('/api/ai/solve', {
                             method: 'POST',

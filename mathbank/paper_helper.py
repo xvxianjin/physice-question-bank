@@ -903,6 +903,7 @@ def build_latex_document(
     show_notice: bool = True,
     question_types: list | None = None,
     section_order: list | None = None,
+    subject: str = "数学",
 ) -> str:
     """
     Generate LaTeX source code based on exam-zh document class matching 试卷类模板.tex.
@@ -1042,13 +1043,13 @@ def build_latex_document(
     lines.append(r"\everymath{\displaystyle}")
     lines.append("")
     lines.append(f"\\title{{{paper_title}}}")
-    lines.append(r"\subject{数学}")
+    lines.append(rf"\subject{{{_escape_paper_type_label(subject)}}}")
     lines.append("")
     lines.append(r"\begin{document}")
     lines.append(r"\raggedbottom")
     lines.append("")
     
-    is_exam_style = (paper_type == "exam" or paper_type == "exam_19")
+    is_exam_style = paper_type in {"exam", "exam_19", "physics_exam", "ap_exam"}
     if is_exam_style:
         if show_secret:
             lines.append(r"\secret")
@@ -1064,7 +1065,8 @@ def build_latex_document(
         
     if is_exam_style:
         lines.append(r"\begin{center}")
-        lines.append(f"    本试卷共 \\pageref{{LastPage}} 页，{total_q_count} 题。全卷满分 {total_score_sum} 分。考试用时 120 分钟。")
+        duration = "180 分钟" if paper_type == "ap_exam" else "120 分钟"
+        lines.append(f"    本试卷共 \\pageref{{LastPage}} 页，{total_q_count} 题。全卷满分 {total_score_sum} 分。考试用时 {duration}。")
         lines.append(r"\end{center}")
         lines.append("")
         if show_notice:
@@ -1092,9 +1094,24 @@ def build_latex_document(
         
     labels = custom_type_labels(question_types)
     question_number = 1
+    ap_section = None
     for q_type in paper_type_order(grouped, paper_type, question_types, section_order):
         if q_type not in grouped or not grouped[q_type]:
             continue
+        if paper_type == "ap_exam":
+            next_section = (
+                "multiple_choice" if q_type in {"single_choice", "multi_choice"}
+                else "free_response"
+            )
+            if next_section != ap_section:
+                ap_section = next_section
+                heading = (
+                    r"Section I: Multiple Choice（42 题，85 分钟）"
+                    if next_section == "multiple_choice"
+                    else r"Section II: Free Response（4 题，95 分钟）"
+                )
+                lines.append(rf"\begin{{center}}\large\bfseries {heading}\end{{center}}")
+                lines.append("")
         items = grouped[q_type]
         written_type = is_written_question_type(q_type)
         type_label = _escape_paper_type_label(labels.get(q_type, q_type))

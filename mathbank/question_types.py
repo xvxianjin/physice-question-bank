@@ -15,9 +15,12 @@ def normalize_section_order(value) -> list[str]:
 def paper_type_order(present_types, paper_type: str, question_types=None, section_order=None) -> list[str]:
     """Use saved section order, appending any types that were added afterwards."""
     order = list(PAPER_TYPE_ORDER)
-    if paper_type == "exam_19":
-        return order
     present = list(dict.fromkeys(present_types))
+    # Mathematics Gaokao and AP 2027 papers have fixed section contracts:
+    # saved section order must not move one section ahead of the other, but
+    # custom question types must still be rendered instead of silently dropped.
+    if paper_type in {"exam_19", "ap_exam"}:
+        return order + [value for value in present if value not in order]
     for item in question_types or []:
         value = item.get("value") if isinstance(item, dict) else None
         if isinstance(value, str) and value in present and value not in order:

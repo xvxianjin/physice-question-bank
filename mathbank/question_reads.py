@@ -40,7 +40,7 @@ def question_summary_load_options():
 
 def find_association_candidates(
     db, *, q="", page=1, page_size=20, exclude_id=None,
-    seq_num=None, question_id=None,
+    seq_num=None, question_id=None, course_id=None,
 ):
     """Find at most 20 labels, never loading question/point ORM graphs.
 
@@ -55,9 +55,14 @@ def find_association_candidates(
         Question.question_type,
         func.substr(Question.content, 1, 2048).label("content"),
     )
+    if course_id is not None:
+        query = query.filter(Question.course_id == course_id)
     if seq_num is not None:
+        seq_query = db.query(Question.id)
+        if course_id is not None:
+            seq_query = seq_query.filter(Question.course_id == course_id)
         target = (
-            db.query(Question.id).order_by(*sequence_order())
+            seq_query.order_by(*sequence_order())
             .offset(int(seq_num) - 1).limit(1).first()
         )
         query = query.filter(Question.id == (target[0] if target else -1))

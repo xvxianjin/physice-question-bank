@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import zipfile
 
 import pytest
+from fastapi import HTTPException
 from starlette.responses import JSONResponse, Response
 from PIL import Image
 
@@ -33,6 +34,29 @@ def question(number, content, answer="", **extra):
 
 def inspect(items, sources, sandbox, **kwargs):
     return preflight.preflight_paper_export(items, sources, target="tex", uploads_dir=sandbox[0], **kwargs)
+
+
+def external_path_escape(root: Path, outside: Path, name: str) -> Path:
+    """Create an external reparse point without requiring Windows symlink privilege.
+
+    The security boundary is the resolved path leaving the upload root. On
+    Windows without SeCreateSymbolicLinkPrivilege, a directory junction covers
+    the same escape path while remaining a real reparse point.
+    """
+    link = root / name
+    try:
+        link.symlink_to(outside)
+        return link
+    except OSError as error:
+        if os.name != "nt" or getattr(error, "winerror", None) != 1314:
+            raise
+    completed = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(link), str(outside.parent)],
+        capture_output=True, text=True,
+    )
+    if completed.returncode:
+        pytest.skip("当前 Windows 账户既不能创建符号链接，也不能创建 junction。")
+    return link
 
 
 def test_missing_images_have_question_field_and_durable_hashes_without_question_text(sandbox):
@@ -102,7 +126,7 @@ def test_source_basename_collisions_are_rejected_instead_of_overwriting(sandbox)
 def test_symlinks_and_unsafe_paths_block_without_reading_outside_uploads(sandbox, tmp_path):
     outside = tmp_path / "secret.png"
     outside.write_bytes(b"private bytes must never be hashed")
-    (sandbox[0] / "link.png").symlink_to(outside)
+    external_path_escape(sandbox[0], outside, "link.png")
     items = [question(9, "![](/static/uploads/link.png)")]
     with pytest.raises(preflight.ExportPreflightError) as error:
         inspect(items, {"paper": "% MathBank-Question-ID: 9\n" + r"\includegraphics{link.png}"}, sandbox)
@@ -155,6 +179,10 @@ def endpoint(name, items, sandbox, monkeypatch):
         "preflight_paper_export": preflight.preflight_paper_export,
         "ExportPreflightError": preflight.ExportPreflightError,
         "PaperExportValidationError": type("PaperExportValidationError", (ValueError,), {}),
+        "PaperStructureError": type("PaperStructureError", (ValueError,), {}),
+        "HTTPException": HTTPException,
+        "_validate_export_paper_structure": lambda payload, questions: (
+            {"subject": "math"}, "A", {"kind": "math", "paper_type": "exam"}),
         "compile_tex_to_pdf": lambda *_: pytest.fail("compiler must not run on missing images"),
         "create_tex_zip_package": lambda *_ ,**kw: pytest.fail("packager must not run on missing images"),
         "Response": Response, "JSONResponse": JSONResponse}
@@ -308,7 +336,7 @@ def test_extensionless_resolution_cannot_borrow_another_questions_binding(sandbo
 def test_extensionless_resolution_still_rejects_symlinked_bound_image(sandbox, tmp_path):
     outside = tmp_path / "private.png"
     Image.new("RGB", (40, 20), "white").save(outside)
-    (sandbox[0] / "diagram.png").symlink_to(outside)
+    external_path_escape(sandbox[0], outside, "diagram.png")
     items = [question(26, r"Figure: \includegraphics{diagram}",
                       image_paths=["/static/uploads/diagram.png"])]
     source = paper.build_latex_document("Image", "", "quiz", items)

@@ -1024,6 +1024,100 @@
                 node.addEventListener('click', action);
                 return node;
             }
+            function reviewReason(review) {
+                if (!review || typeof review !== 'object') return '';
+                const code = typeof review.failure_code === 'string' ? review.failure_code : '';
+                const reasons = {
+                    timeout: '核对超时', network_error: '核对网络失败',
+                    protocol_invalid: '核对返回格式无效', provider_unavailable: '核对模型不可用',
+                    source_unavailable: '原图不可读', source_changed: '原图已变化',
+                    input_budget_exceeded: '原图过大', bbox_rejected: '修正图框超出安全范围或与相邻图重叠',
+                    checks_failed: '核对未通过', model_uncertain: '模型不确定',
+                    anchor_invalid: '图位不唯一', missing_figure: '未返回核对结果',
+                    correction_pending: '修正裁图待复核', input_invalid: '核对输入无效',
+                    preview_changed: '预览图已变化', review_error: '核对异常',
+                    response_truncated: '核对结果被截断',
+                    response_incomplete: '核对返回不完整',
+                    invalid_transport_json: '核对服务返回非 JSON',
+                    identity_mismatch: '核对结果与图位不一致',
+                    input_identity_mismatch: '核对输入身份不一致',
+                    http_400: '核对请求被拒绝', http_401: '核对模型鉴权失败',
+                    http_403: '核对模型鉴权失败', http_404: '核对接口不可用',
+                    http_429: '核对请求过多，请稍后重试',
+                    http_5xx: '核对服务暂时不可用（5xx）', http_error: '核对服务返回错误'
+                };
+                if (reasons[code]) return reasons[code];
+                if (code) return `核对未通过（${code}）`;
+                return typeof review.evidence === 'string' ? review.evidence.slice(0, 120) : '';
+            }
+            function failedCheckReason(review) {
+                const names = {
+                    same_figure: '不是同一幅图', full_graphic: '图形不完整',
+                    labels_complete: '标注或刻度不完整', no_foreign_content: '混入相邻内容',
+                    correct_anchor: '图位不对应', geometry_faithful: '绘图不忠实'
+                };
+                const failed = review && Array.isArray(review.failed_checks) ? review.failed_checks : [];
+                return failed.map(name => names[name]).filter(Boolean).join('、');
+            }
+            async function retryReview(state, figure, trigger) {
+                if (!current(state) || !state.applied || !state.source || state.reviewing) return;
+                const textarea = element(state.target, 'editor');
+                if (!figure || !figure.bbox || occurrences(textarea.value, figure.placeholder) !== 1) {
+                    showToast('图位已变化，请重新识别或手动截图。', 'info');
+                    return;
+                }
+                const figures = state.illustrations
+                    .filter(item => item && typeof item.slot === 'string' && item.bbox)
+                    .map(item => ({ slot: item.slot, bbox: item.bbox }));
+                if (!figures.length) { showToast('没有可重新核对的图框。', 'info'); return; }
+                const before = textarea.value;
+                state.reviewing = true;
+                if (trigger) { trigger.disabled = true; trigger.textContent = '核对中…'; }
+                try {
+                    const response = await fetch('/api/ocr/figures/review', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            image_path: state.source, markdown: before,
+                            engine: 'default', skip_tikz: true, figures
+                        })
+                    });
+                    const data = await response.json();
+                    if (!current(state)) return;
+                    if (!response.ok || data.status !== 'success') {
+                        showToast(data.message || '重新核对失败', 'error');
+                        render(state);
+                        return;
+                    }
+                    if (textarea.value !== before) {
+                        showToast('编辑内容已变化，核对结果未写入，请重试。', 'info');
+                        render(state);
+                        return;
+                    }
+                    textarea.value = data.latex;
+                    const merged = new Map(state.illustrations.map(item => [item.placeholder, item]));
+                    (Array.isArray(data.illustrations) ? data.illustrations : []).forEach(item => {
+                        if (item && typeof item.placeholder === 'string') merged.set(item.placeholder, item);
+                    });
+                    state.illustrations = [...merged.values()];
+                    state.data = { ...(state.data || {}), latex: data.latex,
+                        image_layouts: data.image_layouts || {},
+                        warnings: Array.isArray(data.warnings) ? data.warnings : [],
+                        illustration_review: data.illustration_review || null };
+                    state.applied = true;
+                    registerAssets(state);
+                    textarea.dispatchEvent(new Event('input'));
+                    render(state);
+                    const verified = Number((data.illustration_review || {}).verified) || 0;
+                    showToast(verified ? `已重新核对并补入 ${verified} 幅图` : '已重新核对，未通过的图位保留手动截图。',
+                        verified ? 'success' : 'info');
+                } catch (error) {
+                    if (current(state)) { showToast('重新核对出错: ' + error.message, 'error'); render(state); }
+                } finally {
+                    state.reviewing = false;
+                    if (trigger && current(state)) { trigger.disabled = false; trigger.textContent = '重新核对'; }
+                }
+            }
             function render(state) {
                 if (!current(state)) return;
                 const panel = element(state.target, 'figures');
@@ -1051,18 +1145,34 @@
                         : visible ? figure.manual_crop ? '手动截图' : figure.status === 'tikz' ? 'TikZ 绘图' : '原图截图'
                         : imagePath ? '图位已变化' : '待核对图位';
                     const review = figure.status === 'tikz' ? figure.preview_review : figure.review;
+                    const reason = reviewReason(review);
+                    const checkReason = failedCheckReason(review);
                     if (visible && !figure.manual_crop && review && review.status === 'verified') {
                         status += figure.status === 'tikz' ? ' · 绘图已视觉核对'
                             : review.corrected === true ? ' · 已修正裁图并核对' : ' · 原图裁片已视觉核对';
                     } else if (unresolved && figure.review) {
                         if (figure.review.status === 'unverified') status += ' · 视觉核对未通过';
                         if (figure.review.status === 'unavailable') status += ' · 视觉核对暂不可用';
+                        if (reason) {
+                            const detail = checkReason && ['checks_failed', 'model_uncertain'].includes(figure.review.failure_code)
+                                ? `：${checkReason}` : '';
+                            status += `（${reason}${detail}）`;
+                        }
                     }
                     label.textContent = `${figure.slot || '插图 ' + (index + 1)} · ${status}`;
                     const evidence = review && typeof review.evidence === 'string' ? review.evidence : '';
-                    if (figure.message || evidence) label.title = [figure.message, evidence].filter(Boolean).join('\n');
+                    if (figure.message || evidence || reason) {
+                        label.title = [figure.message, reason, evidence].filter(Boolean).join('\n');
+                    }
                     row.appendChild(label);
-                    if (unresolved) row.appendChild(button('截图补入此处', () => openCrop(state, figure)));
+                    if (unresolved) {
+                        const canRetry = Boolean(figure.bbox && state.source && !String(state.source).startsWith('data:'));
+                        if (canRetry) {
+                            const retry = button('重新核对', () => retryReview(state, figure, retry));
+                            row.appendChild(retry);
+                        }
+                        row.appendChild(button('截图补入此处', () => openCrop(state, figure)));
+                    }
                     panel.appendChild(row);
                 });
                 if (state.applied && state.source) panel.appendChild(button('从原图追加截图', () => openCrop(state, null)));
@@ -1622,6 +1732,7 @@
             formData.append('thinking', thinking);
             formData.append('model', model);
             formData.append('stream', 'true'); // Opt-in to real-time streaming
+            if (window.MathBankCourse) window.MathBankCourse.bodyData(formData);
             
             abortActiveAiSolve();
             const editorSnapshot = EditorState.snapshot();

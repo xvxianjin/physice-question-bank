@@ -409,6 +409,13 @@ function renderSubKnowledgeBadges(value, compact = false) {
     return `<div class="sub-knowledge-badges">${badges}${more}</div>`;
 }
 async function loadSubKnowledgeCatalog() {
+    if (window.MathBankCourse && !window.MathBankCourse.isMath()) {
+        const scope = window.MathBankCourse.params();
+        window.activeCurriculumVersion = scope.curriculum_id || '';
+        subKnowledgeCatalog = [];
+        return {version_code: window.activeCurriculumVersion, sub_knowledge: [],
+            version_changed: false, unsupported: true};
+    }
     const request = ++subKnowledgeCatalogRequest;
     const response = await fetch('/api/config/sub-knowledge');
     if (!response.ok) throw new Error('细分知识点目录加载失败');
@@ -524,6 +531,11 @@ function currentKnowledgePointLocation(kind) {
         knowledge: document.getElementById(prefix + 'Knowledge')?.value || ''};
 }
 async function loadKnowledgePointCatalog(force = false) {
+    if (window.MathBankCourse && !window.MathBankCourse.isMath()) {
+        knowledgePointCatalogCache.clear();
+        knowledgePointNames.clear();
+        return [];
+    }
     const version = knowledgePointVersion();
     let entry = knowledgePointCatalogCache.get(version);
     if (!force && entry?.ready) {
@@ -1458,7 +1470,7 @@ window.visualViewport?.addEventListener('scroll', repositionKnowledgePointPicker
                             </div>
                         </div>
                         <p class="text-xs text-slate-500 leading-relaxed">
-                            为了确保题目能够被精准定位和检索，每道题都需要分配<strong>学段（如：必修一）</strong>与<strong>章节</strong>。您可以选择：
+                            为了确保题目能够被精准定位和检索，每道题都需要分配<strong>学段 / 单元</strong>与<strong>章节 / 主题</strong>。您可以选择：
                         </p>
                         <div class="flex flex-col space-y-2 pt-1">
                             <button id="manualCompulsoryBtn" type="button" class="w-full px-4 py-2.5 bg-slate-50 hover:bg-slate-100 active:scale-[0.99] text-slate-700 rounded-xl font-semibold transition-all text-xs flex items-center justify-center space-x-2 border border-slate-200/50">
@@ -1934,7 +1946,7 @@ window.visualViewport?.addEventListener('scroll', repositionKnowledgePointPicker
                 window.__preserveNewQuestionEditor = true;
                 startNewQuestion();
                 const title = document.getElementById('editorTitle');
-                if (title) title.textContent = '录入新数学题';
+                if (title) title.textContent = `录入新${window.MathBankCourse ? window.MathBankCourse.questionLabel() : '数学题'}`;
                 setQuestionDetailEditAvailability(false);
                 const modal = document.getElementById('editorSection');
                 if (modal) {
@@ -2451,7 +2463,7 @@ window.visualViewport?.addEventListener('scroll', repositionKnowledgePointPicker
             }
             
             // 🟢 先拉取并渲染数据，让弹窗内部 DOM 完全静态就绪后再显示弹窗，完美消除毛玻璃背景下的二次重绘闪烁冲突
-            fetch('/api/stats')
+            fetch(window.MathBankCourse ? window.MathBankCourse.withQuery('/api/stats') : '/api/stats')
                 .then(r => r.json())
                 .then(data => {
                     if (data.status === 'success') {
@@ -2584,6 +2596,7 @@ window.visualViewport?.addEventListener('scroll', repositionKnowledgePointPicker
             listContainer.innerHTML = '<div class="text-[10px] text-slate-400 py-4 text-center"><i class="fa-solid fa-spinner animate-spin mr-1"></i>正在计算知识点分布...</div>';
             
             try {
+                if (window.MathBankCourse) window.MathBankCourse.appendTo(params);
                 const response = await fetch(`/api/questions?${params.toString()}`);
                 const questions = await response.json();
                 
@@ -2849,6 +2862,7 @@ window.visualViewport?.addEventListener('scroll', repositionKnowledgePointPicker
             params.append('page', String(requestedPage));
             params.append('page_size', String(PAGE_LIMIT));
             params.append('sort', sortOrder === 'asc' ? 'asc' : 'desc');
+            if (window.MathBankCourse) window.MathBankCourse.appendTo(params);
             
             const qListContainer = document.getElementById('questionsList');
             if (!qListContainer) return;
@@ -4872,7 +4886,9 @@ window.visualViewport?.addEventListener('scroll', repositionKnowledgePointPicker
                     // Read the owner's current binding before following a stable
                     // ID. External deletion/import can reuse an SQLite ID without
                     // this page having received a mutation/focus event yet.
-                    const response = await fetch(`/api/questions/${sourceId}`);
+                    const response = await fetch(window.MathBankCourse
+                        ? window.MathBankCourse.withQuery(`/api/questions/${sourceId}`)
+                        : `/api/questions/${sourceId}`);
                     if (!response.ok) throw new Error('引用来源题目已失效');
                     const owner = await response.json();
                     if (sequence !== jumpSequence || !EditorState.isCurrent(session)

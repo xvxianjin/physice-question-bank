@@ -1094,6 +1094,7 @@ class WordExamBuilder:
     def __init__(self, omml_map: dict[str, bytes | NumberedWordEquation], diagnostics: WordExportDiagnostics):
         self.omml_map = omml_map
         self.diagnostics = diagnostics
+        self.subject = "数学"
         self.math_font = MATH_FONT
         self.fallback_cache: dict[str, bytes | None] = {}
         self.doc = Document()
@@ -1320,7 +1321,7 @@ class WordExamBuilder:
         show_secret: bool,
         show_notice: bool,
     ) -> None:
-        is_exam_style = paper_type in {"exam", "exam_19"}
+        is_exam_style = paper_type in {"exam", "exam_19", "physics_exam", "ap_exam"}
         if show_secret and is_exam_style:
             p = self.doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -1341,7 +1342,8 @@ class WordExamBuilder:
             subject_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             subject_p.paragraph_format.space_before = Pt(2)
             subject_p.paragraph_format.space_after = Pt(4)
-            run = subject_p.add_run("数  学")
+            display_subject = "  ".join(self.subject) if self.subject in {"数学", "物理"} else self.subject
+            run = subject_p.add_run(display_subject)
             _set_run_font(run, 15, bold=True, cjk_font=CJK_TITLE_FONT)
 
         if subtitle:
@@ -1357,7 +1359,8 @@ class WordExamBuilder:
             meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
             meta.paragraph_format.space_before = Pt(4)
             meta.paragraph_format.space_after = Pt(6)
-            run = meta.add_run(f"本试卷共 {total_count} 题。全卷满分 {total_score} 分。考试用时 120 分钟。")
+            duration = "180 分钟" if paper_type == "ap_exam" else "120 分钟"
+            run = meta.add_run(f"本试卷共 {total_count} 题。全卷满分 {total_score} 分。考试用时 {duration}。")
             _set_run_font(run, 10.5, cjk_font=CJK_BODY_FONT)
 
             if show_notice:
@@ -1408,6 +1411,20 @@ class WordExamBuilder:
         p.paragraph_format.space_after = Pt(4)
         run = p.add_run(heading)
         _set_run_font(run, SECTION_FONT_SIZE, bold=True, cjk_font=CJK_BODY_FONT)
+
+    def add_ap_section_heading(self, section: str) -> None:
+        p = self.doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(10)
+        p.paragraph_format.space_after = Pt(4)
+        p.paragraph_format.keep_with_next = True
+        text = (
+            "Section I: Multiple Choice（42 题，85 分钟）"
+            if section == "multiple_choice"
+            else "Section II: Free Response（4 题，95 分钟）"
+        )
+        run = p.add_run(text)
+        _set_run_font(run, 12, bold=True, cjk_font=CJK_HEADING_FONT)
 
     def _usable_page_width_inches(self) -> float:
         section = self.doc.sections[0]
@@ -2117,9 +2134,9 @@ class WordExamBuilder:
     def save_bytes(self) -> bytes:
         properties = self.doc.core_properties
         properties.title = "MathBank 可编辑 Word 试卷"
-        properties.subject = "高中数学试卷"
+        properties.subject = f"{self.subject}试卷"
         properties.author = "MathBank"
-        properties.keywords = "数学, 试卷, OMML, 可编辑公式"
+        properties.keywords = f"{self.subject}, 试卷, OMML, 可编辑公式"
         output = BytesIO()
         self.doc.save(output)
         return output.getvalue()
@@ -2337,6 +2354,7 @@ def build_word_document(
     uploads_dir: str | Path | None = None,
     question_types: list | None = None,
     section_order: list | None = None,
+    subject: str = "数学",
 ) -> tuple[bytes, dict]:
     """Build an A4 editable DOCX and return bytes plus conversion diagnostics."""
     prepared = [_prepare_question(item, uploads_dir) for item in questions_data]
@@ -2359,6 +2377,7 @@ def build_word_document(
         diagnostics.warnings.append("少数公式无法转为 Word 原生公式，已尝试清晰图片兜底。")
 
     builder = WordExamBuilder(omml_map, diagnostics)
+    builder.subject = subject
     total_score = sum(item.score for item in prepared)
     builder.add_title_block(
         title,
@@ -2379,11 +2398,20 @@ def build_word_document(
     ordered_items: list[PreparedQuestion] = []
     next_number = 1
     section_index = 0
+    ap_section = None
     labels = custom_type_labels(question_types)
     for q_type in paper_type_order(grouped, paper_type, question_types, section_order):
         items = grouped.get(q_type, [])
         if not items:
             continue
+        if paper_type == "ap_exam":
+            next_section = (
+                "multiple_choice" if q_type in {"single_choice", "multi_choice"}
+                else "free_response"
+            )
+            if next_section != ap_section:
+                ap_section = next_section
+                builder.add_ap_section_heading(next_section)
         ordered_items.extend(items)
         section_index += 1
         builder.add_section_heading(q_type, items, paper_type, section_index, labels)

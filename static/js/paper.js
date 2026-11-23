@@ -12,6 +12,14 @@
     const STORAGE_KEY_META = 'mathbank_paper_meta';
     const PAPER_STREAM_PAGE_SIZE = 15;
     const PAPER_QUESTION_CACHE_LIMIT = 120;
+    const PHYSICS_PAPER_TYPES = Object.freeze([
+        {value: 'exam', label: '物理常规试卷'},
+        {value: 'quiz', label: '物理日常小练'},
+        {value: 'physics_exam', label: '物理考试卷'},
+    ]);
+    const AP_PAPER_TYPES = Object.freeze([
+        {value: 'ap_exam', label: 'AP 2027 仿真卷（42 选择 + 4 自由作答）'},
+    ]);
     const A4_PAGE = Object.freeze({ width: 794, height: 1123, margin: 96 });
     const paperQuestionCacheAccess = new Map();
 
@@ -112,6 +120,85 @@
     };
 
     window.applyPaperPreviewZoom = applyPaperPreviewZoom;
+
+    function courseSubject() {
+        const active = window.MathBankCourse && window.MathBankCourse.active;
+        return active ? active.subject : 'math';
+    }
+
+    function paperTypeChoices() {
+        const active = window.MathBankCourse && window.MathBankCourse.active;
+        if (active && active.courseId && active.courseId.indexOf('ap_physics_c_') === 0) {
+            return AP_PAPER_TYPES;
+        }
+        if (active && active.subject === 'physics') return PHYSICS_PAPER_TYPES;
+        return [
+            {value: 'exam_19', label: '19题高考卷（含答题卡）'},
+            {value: 'exam', label: '常规试卷'},
+            {value: 'quiz', label: '日常小练'},
+        ];
+    }
+
+    function ensurePaperTypeForCourse() {
+        const choices = paperTypeChoices();
+        if (!choices.some(item => item.value === window.PaperStore.meta.paper_type)) {
+            window.PaperStore.meta.paper_type = choices[0].value;
+            window.PaperStore.meta.solution_space_default =
+                window.PaperStore.meta.paper_type === 'exam_19' ? '0.0' : '7.0';
+        }
+        const active = window.MathBankCourse && window.MathBankCourse.active;
+        if (active && active.subject !== 'math'
+                && window.PaperStore.meta.title === '2026年高中数学模拟考试试卷') {
+            window.PaperStore.meta.title = `${active.courseName}模拟试卷`;
+        }
+        if (!isCnPhysicsCourse()) {
+            window.PaperStore.meta.province_group_id = '';
+        }
+    }
+
+    function paperTypeSelectHtml(meta) {
+        return paperTypeChoices().map(item =>
+            `<option value="${escapeHtml(item.value)}" ${meta.paper_type === item.value ? 'selected' : ''}>${escapeHtml(item.label)}</option>`
+        ).join('');
+    }
+
+    function isCnPhysicsCourse() {
+        const active = window.MathBankCourse && window.MathBankCourse.active;
+        return Boolean(active && active.courseId === 'cn_hs_physics');
+    }
+
+    function paperMetadataPayload() {
+        const groupId = window.PaperStore.meta.province_group_id;
+        return groupId ? { province_group_id: groupId } : {};
+    }
+
+    async function ensureProvinceGroups() {
+        if (!isCnPhysicsCourse()) return;
+        if (window.PaperStore.provinceGroupsLoaded) return;
+        window.PaperStore.provinceGroupsLoaded = true;
+        try {
+            const response = await fetch('/api/courses/cn_hs_physics/groups', { cache: 'no-store' });
+            const data = await response.json();
+            if (!response.ok || !Array.isArray(data.groups)) {
+                throw new Error(data.detail || data.message || '省份组加载失败');
+            }
+            window.PaperStore.provinceGroups = data.groups;
+        } catch (error) {
+            window.PaperStore.provinceGroupsLoaded = false;
+            window.PaperStore.provinceGroupsError = error.message || '省份组加载失败';
+        }
+        renderPart2FilterSection();
+    }
+
+    function provinceGroupSelectHtml(meta) {
+        if (!isCnPhysicsCourse()) return '';
+        const groups = window.PaperStore.provinceGroups || [];
+        const error = window.PaperStore.provinceGroupsError;
+        const options = ['<option value="">不指定省份组（仅按课程目录）</option>'].concat(
+            groups.map(group => `<option value="${escapeHtml(group.id)}" ${meta.province_group_id === group.id ? 'selected' : ''}>${escapeHtml(group.name)}${group.status === 'provisional' ? '（临时基线）' : ''}</option>`)
+        ).join('');
+        return `<label>物理省份组<select id="paperProvinceGroup" onchange="updatePaperMeta('province_group_id', this.value)" class="glass-select">${options}</select>${error ? `<span class="text-xs text-rose-500">${escapeHtml(error)}</span>` : ''}</label>`;
+    }
 
     // Load State from LocalStorage
     function loadStateFromStorage() {
@@ -238,7 +325,9 @@
         updatePaperQuestionAnswer(qid);
 
         try {
-            const response = await fetch(`/api/questions/${qid}`);
+            const response = await fetch(window.MathBankCourse
+                ? window.MathBankCourse.withQuery(`/api/questions/${qid}`)
+                : `/api/questions/${qid}`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const detail = await response.json();
             if (requestRevision !== paperAnswerRevision
@@ -772,6 +861,7 @@
                 const protectedFigureLayouts = snapshotFigureLayoutsForBankFetch();
                 try {
                     const params = new URLSearchParams({ ids: batchIds.join(',') });
+                    if (window.MathBankCourse) window.MathBankCourse.appendTo(params);
                     const response = await fetch(`/api/paper/questions?${params.toString()}`);
                     if (!response.ok) throw new Error(`HTTP ${response.status}`);
                     const payload = await response.json();
@@ -898,6 +988,7 @@
         params.set('page_size', String(PAPER_STREAM_PAGE_SIZE));
         params.set('sort', 'desc');
         KnowledgePointState.appendParams(params, KnowledgePointState.filter('paper'));
+        if (window.MathBankCourse) window.MathBankCourse.appendTo(params);
 
         const requestSeq = ++bankQuestionsRequestSeq;
         if (bankQuestionsAbortController) bankQuestionsAbortController.abort();
@@ -950,6 +1041,8 @@
 
     // Render Full Paper Workspace (Part 2, Part 3, Part 4)
     window.renderPaperWorkspace = async function () {
+        await ensureProvinceGroups();
+        ensurePaperTypeForCourse();
         renderPart2FilterSection();
         await fetchBankQuestions();
         await ensureCartQuestionsLoaded({ revalidateAll: true });
@@ -1062,7 +1155,8 @@
                     <div class="workspace-filter-grid">
                         <label>主标题<input type="text" id="paperMetaTitle" value="${escapeHtml(meta.title)}" oninput="updatePaperMeta('title', this.value)" onchange="updatePaperMeta('title', this.value)" class="glass-input"></label>
                         <label>副标题 / 备注<input type="text" id="paperMetaSubtitle" value="${escapeHtml(meta.subtitle)}" oninput="updatePaperMeta('subtitle', this.value)" onchange="updatePaperMeta('subtitle', this.value)" class="glass-input"></label>
-                        <label>试卷模板<select id="paperMetaType" onchange="updatePaperMeta('paper_type', this.value)" class="glass-select"><option value="exam_19" ${meta.paper_type === 'exam_19' ? 'selected' : ''}>19题高考卷（含答题卡）</option><option value="exam" ${meta.paper_type === 'exam' ? 'selected' : ''}>常规试卷</option><option value="quiz" ${meta.paper_type === 'quiz' ? 'selected' : ''}>日常小练</option></select></label>
+                        <label>试卷模板<select id="paperMetaType" onchange="updatePaperMeta('paper_type', this.value)" class="glass-select">${paperTypeSelectHtml(meta)}</select></label>
+                        ${provinceGroupSelectHtml(meta)}
                     </div>
                 </section>
                 <section id="paperAiDetails" class="paper-configuration-panel paper-ai-details paper-control-section" aria-labelledby="togglePaperAiBtn" ${window.PaperStore.isAiExpanded ? '' : 'hidden'}>
@@ -1204,6 +1298,11 @@
     }
 
     window.updatePaperMeta = function (key, value) {
+        if (key === 'paper_type'
+                && !paperTypeChoices().some(item => item.value === value)) {
+            if (window.showToast) window.showToast('当前课程不支持该试卷模板。', 'error');
+            return;
+        }
         window.PaperStore.meta[key] = value;
         if (key === 'paper_type') {
             const newDefault = value === 'exam_19' ? '0.0' : '7.0';
@@ -1266,7 +1365,9 @@
         store.aiReferenceError = '';
         renderPaperAiReferenceOptions();
         try {
-            const response = await fetch('/api/paper/reference-exams');
+            const response = await fetch(window.MathBankCourse
+                ? window.MathBankCourse.withQuery('/api/paper/reference-exams')
+                : '/api/paper/reference-exams');
             const data = await response.json();
             if (!response.ok || data.status !== 'success' || !Array.isArray(data.data)) {
                 throw new Error(paperAiResponseMessage(data, '参考卷读取失败，请重试。'));
@@ -1372,7 +1473,9 @@
             const response = await fetch('/api/paper/ai-select', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(request)
+                body: JSON.stringify(window.MathBankCourse
+                    ? window.MathBankCourse.bodyData(request)
+                    : request)
             });
             const data = await response.json();
             if (!selectionCurrent()) {
@@ -2719,6 +2822,8 @@
         const secNums = ['一', '二', '三', '四', '五'];
         let secIdx = 0;
         const isExam19 = (meta.paper_type === 'exam_19');
+        const isApExam = (meta.paper_type === 'ap_exam');
+        const fixedSectionOrder = isExam19 || isApExam;
         let globalQIndex = 1;
 
         typeOrder.forEach((qType, sectionIndex) => {
@@ -2764,6 +2869,11 @@
                 } else {
                     secHeaderText = `${secNum}、${qType === 'detailed_answer' ? '解答题' : typeLabel}：本题共 ${count} 小题，共 ${secScore} 分。解答应写出文字说明、证明过程或演算步骤。`;
                 }
+                if (isApExam) {
+                    secHeaderText = (writtenType
+                        ? 'Section II: Free Response（4 题，95 分钟）　'
+                        : 'Section I: Multiple Choice（42 题，85 分钟）　') + secHeaderText;
+                }
             }
 
             blocks.push({
@@ -2772,7 +2882,7 @@
                 html: `
                     <div class="paper-sec-block mb-3 flex items-start gap-3" data-qtype="${safeType}">
                         <h3 class="flex-1 min-w-0 font-bold text-[13.5px] font-serif mt-2 mb-2 text-slate-900 leading-snug">${secHeaderText}</h3>
-                        ${isExam19 ? '' : `
+                        ${fixedSectionOrder ? '' : `
                         <div class="paper-section-controls flex shrink-0 gap-1 print:hidden" aria-label="${typeLabel}大题排序">
                             <button type="button" data-section-move="up" onclick="window.movePaperSection(this.closest('[data-qtype]').dataset.qtype, 'up')" ${sectionIndex === 0 ? 'disabled' : ''}
                                 class="min-h-[44px] min-w-[44px] px-2 rounded-lg text-xs font-sans text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-default" aria-label="上移${typeLabel}大题" title="上移整个大题">↑ 上移</button>
@@ -3446,6 +3556,7 @@
                 section_order: normalizeSectionOrder(window.PaperStore.meta.section_order),
                 show_notice: window.PaperStore.meta.show_notice !== false,
                 show_secret: window.PaperStore.meta.show_secret !== false,
+                metadata: paperMetadataPayload(),
                 target: target,
                 questions: cartQuestions
             };
@@ -3453,7 +3564,9 @@
             const res = await fetch('/api/paper/export/pdf', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(window.MathBankCourse
+                    ? window.MathBankCourse.bodyData(payload)
+                    : payload)
             });
 
             if (res.ok && res.headers.get('content-type')?.includes('application/pdf')) {
@@ -3876,7 +3989,9 @@
             const res = await fetch('/api/paper/export/word', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(window.MathBankCourse
+                    ? window.MathBankCourse.bodyData(payload)
+                    : payload)
             });
             if (!res.ok) {
                 let message = 'Word 导出失败';
@@ -3964,6 +4079,7 @@
                 section_order: normalizeSectionOrder(window.PaperStore.meta.section_order),
                 show_notice: window.PaperStore.meta.show_notice !== false,
                 show_secret: window.PaperStore.meta.show_secret !== false,
+                metadata: paperMetadataPayload(),
                 questions: buildCartQuestionsPayload()
             };
             await generateAndDownloadWord(payload);
@@ -3995,13 +4111,16 @@
                 section_order: normalizeSectionOrder(window.PaperStore.meta.section_order),
                 show_notice: window.PaperStore.meta.show_notice !== false,
                 show_secret: window.PaperStore.meta.show_secret !== false,
+                metadata: paperMetadataPayload(),
                 questions: cartQuestions
             };
 
             const res = await fetch('/api/paper/export/bundle', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(window.MathBankCourse
+                    ? window.MathBankCourse.bodyData(payload)
+                    : payload)
             });
 
             if (res.ok) {
@@ -4069,13 +4188,16 @@
                 section_order: normalizeSectionOrder(window.PaperStore.meta.section_order),
                 show_notice: window.PaperStore.meta.show_notice !== false,
                 show_secret: window.PaperStore.meta.show_secret !== false,
+                metadata: paperMetadataPayload(),
                 questions: cart
             };
 
             const res = await fetch('/api/paper/save', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(window.MathBankCourse
+                    ? window.MathBankCourse.bodyData(payload)
+                    : payload)
             });
 
             const data = await res.json();
@@ -4123,6 +4245,8 @@
                 exam_19: '19题高考卷',
                 exam: '常规试卷',
                 quiz: '日常小练',
+                physics_exam: '物理考试卷',
+                ap_exam: 'AP 2027 仿真卷',
                 handout: '讲义/教案'
             };
             container.innerHTML = `<div class="records-paper-grid">${papers.map((paper) => {
@@ -4184,7 +4308,9 @@
         `;
 
         try {
-            const res = await fetch('/api/papers');
+            const res = await fetch(window.MathBankCourse
+                ? window.MathBankCourse.withQuery('/api/papers')
+                : '/api/papers');
             const data = await res.json();
             if (data.status !== 'success' || !Array.isArray(data.data)) {
                 throw new Error(data.message || '无法读取历史试卷');
@@ -4278,7 +4404,9 @@
         window.MathBankModal.open(modal, { onEscape: window.closeSavedPapersModal });
 
         try {
-            const res = await fetch('/api/papers');
+            const res = await fetch(window.MathBankCourse
+                ? window.MathBankCourse.withQuery('/api/papers')
+                : '/api/papers');
             const data = await res.json();
             const container = document.getElementById('savedPapersListContainer');
             const countEl = document.getElementById('savedPaperTotalCount');
@@ -4304,6 +4432,8 @@
                     'exam_19': { label: '19题高考卷', color: 'bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300' },
                     'exam': { label: '常规试卷', color: 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800 dark:text-emerald-300' },
                     'quiz': { label: '日常小练', color: 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/40 dark:border-amber-800 dark:text-amber-300' },
+                    'physics_exam': { label: '物理考试卷', color: 'bg-sky-50 text-sky-600 border-sky-200 dark:bg-sky-950/40 dark:border-sky-800 dark:text-sky-300' },
+                    'ap_exam': { label: 'AP 2027 仿真卷', color: 'bg-violet-50 text-violet-600 border-violet-200 dark:bg-violet-950/40 dark:border-violet-800 dark:text-violet-300' },
                     'handout': { label: '讲义/教案', color: 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/40 dark:border-rose-800 dark:text-rose-300' }
                 };
 
@@ -4357,7 +4487,9 @@
         try {
             if (window.showToast) window.showToast('正在载入试卷数据...', 'info');
 
-            const res = await fetch(`/api/papers/${paperId}`);
+            const res = await fetch(window.MathBankCourse
+                ? window.MathBankCourse.withQuery(`/api/papers/${paperId}`)
+                : `/api/papers/${paperId}`);
             const data = await res.json();
             if (data.status === 'success' && data.data) {
                 const paper = data.data;
@@ -4369,6 +4501,7 @@
                 window.PaperStore.meta.section_order = normalizeSectionOrder(paper.section_order);
                 window.PaperStore.meta.show_notice = paper.show_notice !== false;
                 window.PaperStore.meta.show_secret = paper.show_secret !== false;
+                window.PaperStore.meta.province_group_id = paper.province_group_id || '';
 
                 // Rebuild cart & questionsMap
                 window.PaperStore.cart = [];
@@ -4414,7 +4547,9 @@
         if (!confirm('确定要删除这份历史试卷记录吗？（不会影响题库中的题目数据）')) return;
 
         try {
-            const res = await fetch(`/api/papers/${paperId}`, { method: 'DELETE' });
+            const res = await fetch(window.MathBankCourse
+                ? window.MathBankCourse.withQuery(`/api/papers/${paperId}`)
+                : `/api/papers/${paperId}`, { method: 'DELETE' });
             const data = await res.json();
             if (data.status === 'success') {
                 if (window.showToast) window.showToast('历史试卷已删除', 'success');
@@ -4432,7 +4567,9 @@
         const actionKey = `saved-pdf:${paperId}`;
         if (!beginPaperAction(actionKey, '导出历史试卷 PDF')) return;
         try {
-            const res = await fetch(`/api/papers/${paperId}`);
+            const res = await fetch(window.MathBankCourse
+                ? window.MathBankCourse.withQuery(`/api/papers/${paperId}`)
+                : `/api/papers/${paperId}`);
             const data = await res.json();
             if (data.status === 'success' && data.data) {
                 const paper = data.data;
@@ -4455,6 +4592,10 @@
                         subtitle: paper.subtitle,
                         paper_type: paper.paper_type,
                         section_order: normalizeSectionOrder(paper.section_order),
+                        course_id: paper.course_id,
+                        curriculum_id: paper.curriculum_id,
+                        metadata: paper.province_group_id
+                            ? { province_group_id: paper.province_group_id } : {},
                         target: 'paper',
                         questions: cartQuestions
                     })
@@ -4497,7 +4638,7 @@
 
     function getPaperTypeOrder(presentTypes, paperType, sectionOrder = []) {
         const order = ['single_choice', 'multi_choice', 'fill_in_blank', 'detailed_answer'];
-        if (paperType === 'exam_19') return order;
+        if (paperType === 'exam_19' || paperType === 'ap_exam') return order;
         const configured = window.systemMetadata && Array.isArray(window.systemMetadata.question_types)
             ? window.systemMetadata.question_types : [];
         configured.forEach(item => {

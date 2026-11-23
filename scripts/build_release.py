@@ -20,6 +20,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 from mathbank import __version__
+from mathbank.curriculums import CURRICULUM_NAMES
 from mathbank.paths import BUILD_CACHE_DIR, DIST_DIR as PROJECT_DIST_DIR, PROJECT_ROOT
 
 
@@ -113,6 +114,21 @@ STATIC_ALLOWLIST = (
     "lib",
 )
 HIDDEN_FILE_ALLOWLIST = {".env.example", ".gitkeep", ".rels"}
+COURSE_RUNTIME_FILES = frozenset({
+    "mathbank/courses.py",
+    "mathbank/course_api.py",
+    "mathbank/course_curriculum.py",
+    "mathbank/paper_exam_profile.py",
+    "mathbank/physics_curriculums.py",
+    "mathbank/physics_groups.py",
+    "mathbank/update_source.py",
+    "mathbank/resources/courses.json",
+    "mathbank/resources/physics/ap_c_mechanics.json",
+    "mathbank/resources/physics/ap_c_em.json",
+    "mathbank/resources/physics/cn_physics_renjiao_2019.json",
+    "mathbank/resources/physics/groups/cn_physics_groups.json",
+    *(f"mathbank/resources/curriculums/{code}.json" for code in CURRICULUM_NAMES),
+})
 # Reviewed local-only maintenance tools and the source-only release builder.
 # Match project-relative paths so runtime resources and dependency names survive.
 INTERNAL_TOOL_RELEASE_PATHS = frozenset({
@@ -793,6 +809,7 @@ def assert_release_tree_clean(root, platform_name):
     else:
         raise RuntimeError(f"unknown release platform: {platform_name}")
 
+    required.update(COURSE_RUNTIME_FILES)
     relative_files = {path.relative_to(root).as_posix() for path in _release_files(root)}
     missing = sorted(required - relative_files)
     if missing:
@@ -1173,6 +1190,7 @@ def _build_archive(staging_root, archive_stem, platform_name, launcher_name):
             "scripts/local_launcher.py",
             "覆盖升级说明.txt",
         }
+        required_members.update(COURSE_RUNTIME_FILES)
         if platform_name == "windows-x64":
             required_members.add(WINDOWS_LAUNCHER_HELPER)
             required_members.update(

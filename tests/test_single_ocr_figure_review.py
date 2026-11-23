@@ -126,6 +126,66 @@ def test_rejected_corrected_actual_crop_never_becomes_verified_or_gets_materiali
     assert not list(root.glob("ocr_figure_*"))
 
 
+def test_correction_review_is_split_so_one_truncated_batch_cannot_fail_all(setup):
+    _root, path, _image, provider = setup
+    boxes = [
+        {"left": 20, "top": 50, "right": 300, "bottom": 450},
+        {"left": 350, "top": 50, "right": 630, "bottom": 450},
+        {"left": 680, "top": 50, "right": 960, "bottom": 450},
+        {"left": 20, "top": 500, "right": 300, "bottom": 900},
+        {"left": 350, "top": 500, "right": 630, "bottom": 900},
+        {"left": 680, "top": 500, "right": 960, "bottom": 900},
+    ]
+    parsed = parse_single_ocr_response({
+        "markdown": " ".join(f"[插图待补: 图{index}]" for index in range(1, 7)),
+        "figures": [{"slot": f"图{index}", "bbox": box} for index, box in enumerate(boxes, 1)],
+    })
+    def respond(data, _content):
+        if data["stage"] == "crop_initial":
+            return [
+                {**accepted(record), "decision": "correct",
+                 "corrected_bbox": record["bbox"],
+                 "checks": {**CHECKS, "full_graphic": False},
+                 "evidence": "边界需要按原图重新收紧。"}
+                for record in data["figures"]
+            ]
+        assert len(data["figures"]) <= 2, "corrected review batch was not split"
+        return [accepted(record) for record in data["figures"]]
+    post, calls = post_for(respond)
+    reviewed = review_single_ocr_figures(parsed, path, provider, post=post)
+    assert [call[0]["stage"] for call in calls].count("crop_initial") == 2
+    assert [call[0]["stage"] for call in calls].count("crop_corrected") == 3
+    assert len(reviewed["_verified_crops"]) == 6
+    assert all(item["review"]["status"] == "verified" for item in reviewed["illustrations"])
+
+
+def test_one_failed_initial_batch_does_not_fail_other_batches(setup):
+    _root, path, _image, provider = setup
+    boxes = [
+        {"left": 20, "top": 50, "right": 300, "bottom": 450},
+        {"left": 350, "top": 50, "right": 630, "bottom": 450},
+        {"left": 680, "top": 50, "right": 960, "bottom": 450},
+        {"left": 20, "top": 500, "right": 300, "bottom": 900},
+        {"left": 350, "top": 500, "right": 630, "bottom": 900},
+        {"left": 680, "top": 500, "right": 960, "bottom": 900},
+    ]
+    parsed = parse_single_ocr_response({
+        "markdown": " ".join(f"[插图待补: 图{index}]" for index in range(1, 7)),
+        "figures": [{"slot": f"图{index}", "bbox": box} for index, box in enumerate(boxes, 1)],
+    })
+    def respond(data, _content):
+        if any(record["slot"] == "图4" for record in data["figures"]):
+            raise requests.ConnectionError("private relay failure")
+        return [accepted(record) for record in data["figures"]]
+    post, calls = post_for(respond)
+    reviewed = review_single_ocr_figures(parsed, path, provider, post=post)
+    assert len(calls) == 2
+    assert reviewed["illustration_review"]["status"] == "partial"
+    assert reviewed["illustration_review"]["verified"] == 3
+    assert [item["review"]["status"] for item in reviewed["illustrations"][:3]] == ["verified"] * 3
+    assert all(item["review"]["failure_code"] == "network_error" for item in reviewed["illustrations"][3:])
+
+
 @pytest.mark.parametrize("mutation", ["hash", "id", "duplicate", "check", "missing"])
 def test_malformed_or_unaccepted_review_is_fail_closed_without_retry(setup, mutation):
     root, path, image, provider = setup

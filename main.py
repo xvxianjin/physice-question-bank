@@ -72,6 +72,9 @@ from mathbank.database import (
     normalize_figure_size,
 )
 from mathbank.sub_knowledge import detect_curriculum_version, normalize_sub_knowledge
+from mathbank.courses import (
+    CourseNotAvailable, CourseScopeError, require_available_course,
+)
 from mathbank.question_reads import find_association_candidates, question_summary_load_options
 from mathbank.question_queries import QuestionReadSnapshot, page_questions
 from mathbank.agent_api import create_agent_router
@@ -211,6 +214,14 @@ from mathbank.curriculums import (
     load_curriculum,
     route_curriculum_location,
 )
+from mathbank.course_curriculum import (
+    CourseCurriculumError,
+    curriculum_catalog as course_curriculum_catalog,
+    curriculum_tree as course_curriculum_tree_data,
+    default_curriculum_id,
+    question_curriculum_id,
+    validate_question_location,
+)
 from mathbank.prompts import (
     COMMON_OCR_PROMPT,
     PDF_ORIGINAL_COMMON_OCR_PROMPT,
@@ -220,6 +231,7 @@ from mathbank.prompts import (
     build_single_ocr_vision_prompt,
     build_ai_solve_prompts,
     build_classification_system_prompt,
+    build_physics_classification_system_prompt,
     build_import_parse_system_prompt,
     build_latex_error_explanation_prompts,
     build_paper_selection_prompts,
@@ -231,12 +243,18 @@ from mathbank.ocr_illustrations import (
     MAX_OCR_RESPONSE_CHARS,
     materialize_ocr_illustrations,
     parse_single_ocr_response,
+    rebuild_ocr_illustrations,
 )
 from mathbank.ocr_figure_review import review_single_ocr_figures, review_tikz_previews
 from mathbank.question_types import (
     detect_structured_question_form,
     normalize_ai_question_form,
     normalize_section_order,
+)
+from mathbank.paper_exam_profile import (
+    PAPER_TYPES,
+    PaperStructureError,
+    validate_paper_structure,
 )
 import shutil
 from mathbank.pdf_inspector_helper import (
@@ -559,7 +577,17 @@ async def app_lifespan(_app: FastAPI):
     DOCUMENT_TASKS.start_maintenance(interval_seconds=60.0)
     project_service = _document_project_service()
     if project_service:
-        project_service.migrate_tasks(copy.deepcopy(get_current_curriculum()))
+        def migrated_curriculum(task):
+            options = ((task.get("document_input") or {}).get("options") or {})
+            course = require_question_course(options.get("course_id") or "cn_hs_math")
+            _resolved, tree = course_curriculum_tree(
+                course, options.get("curriculum_id"),
+            )
+            return tree
+
+        project_service.migrate_tasks(
+            copy.deepcopy(get_current_curriculum()), migrated_curriculum,
+        )
         _DOCUMENT_PROJECT_STOP.clear()
         threading.Thread(target=_maintain_document_projects, name="mathbank-project-cleanup", daemon=True).start()
     threading.Thread(
@@ -588,6 +616,8 @@ async def app_lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="本地化数学题库管理系统 API", lifespan=app_lifespan)
+from mathbank.course_api import router as course_router
+app.include_router(course_router)
 from mathbank.tiered_storage import StorageActivityMiddleware
 app.add_middleware(StorageActivityMiddleware)
 
@@ -1517,6 +1547,71 @@ def ocr_formula(
             except Exception as e_cleanup:
                 print(f"[OCR Flow Cleanup Error] 无法删除临时文件 {temp_filepath}: {str(e_cleanup)}")
 
+
+@app.post("/api/ocr/figures/review")
+def review_ocr_figures(payload: dict):
+    """Re-run visual review for existing OCR slots without calling OCR again.
+
+    The browser sends its current editor text and the original source image
+    path; only verified source crops replace the placeholders.
+    """
+    try:
+        image_path = payload.get("image_path")
+        markdown = payload.get("markdown")
+        figures = payload.get("figures")
+        if not isinstance(image_path, str) or not image_path.strip():
+            raise ValueError("缺少 OCR 原图路径。")
+        source_path = resolve_upload_asset(
+            image_path, uploads_dir=UPLOAD_DIR, url_prefix=UPLOAD_DIR_REL,
+        )
+        recognized = rebuild_ocr_illustrations(markdown, figures)
+        engine = str(payload.get("engine") or "default").strip().lower()
+        if engine == "default":
+            engine = os.getenv("OCR_PREFER_ENGINE", "siliconflow")
+        provider = resolve_ocr_provider(engine)
+        if not (provider.api_key and provider.api_key.strip()):
+            return JSONResponse(
+                content={
+                    "status": "error",
+                    "message": f"未配置 {provider.credential_label}，无法重新核对配图。",
+                },
+                status_code=409,
+            )
+        with Image.open(source_path) as opened:
+            image = opened.convert("RGB")
+        recognized = review_single_ocr_figures(
+            recognized, source_path, provider,
+            post=post_chat_completion, semaphore=PDF_OCR_SEMAPHORE,
+        )
+        figures_out = materialize_ocr_illustrations(
+            recognized, image, skip_tikz=True,
+            upload_root=UPLOAD_DIR, url_prefix=UPLOAD_DIR_REL,
+            draw=None, compile_tikz=None,
+            require_review=True, verified_crops=recognized["_verified_crops"],
+        )
+        return {
+            "status": "success",
+            "latex": figures_out["markdown"],
+            "illustrations": figures_out["illustrations"],
+            "tikz_assets": [],
+            "image_layouts": figures_out["image_layouts"],
+            "warnings": figures_out["warnings"],
+            "illustration_review": recognized["illustration_review"],
+        }
+    except AssetSecurityError as exc:
+        return JSONResponse(
+            content={"status": "error", "message": str(exc)}, status_code=400,
+        )
+    except (ValueError, OSError) as exc:
+        return JSONResponse(
+            content={"status": "error", "message": str(exc)}, status_code=400,
+        )
+    except Exception as exc:
+        return JSONResponse(
+            content={"status": "error", "message": f"重新核对配图失败: {exc}"},
+            status_code=500,
+        )
+
 # ----------------- DeepSeek AI Solve API -----------------
 
 @app.post("/api/ai/solve")
@@ -1527,7 +1622,9 @@ def ai_solve(
     custom_prompt: str = Form(""),
     thinking: str = Form("enabled"),
     model: str = Form(""),
-    stream: str = Form("false")
+    stream: str = Form("false"),
+    course_id: str = Form("cn_hs_math"),
+    curriculum_id: Optional[str] = Form(None),
 ):
     provider = resolve_text_provider(model or os.getenv("PREFER_SOLVE_MODEL") or "deepseek-v4-pro")
     api_key = provider.api_key
@@ -1545,11 +1642,16 @@ def ai_solve(
         )
         
     try:
+        course = require_question_course(course_id)
+        if course["subject"] == "physics":
+            resolve_course_curriculum(course, curriculum_id)
         system_instructions, user_prompt = build_ai_solve_prompts(
             question_type=question_type,
             content=content,
             ocr_result=ocr_result,
             custom_prompt=custom_prompt,
+            subject=course["subject"],
+            course_name=course["name"],
         )
 
         # Keep the legacy fallback cap for older Bailian models. Current
@@ -1672,6 +1774,8 @@ def ai_solve(
             "status": "success",
             "solution": ai_message
         }
+    except HTTPException:
+        raise
     except requests.exceptions.Timeout:
         friendly_msg = (
             f"AI 解析生成超时（限制为 {AI_REQUEST_TIMEOUT_SECONDS} 秒）。这通常是因为 {provider_name} "
@@ -2034,12 +2138,17 @@ def parse_version_tuple(v_str: str):
 @app.get("/api/version")
 def get_version_info():
     """Return local version info."""
-    from mathbank import __version__, GITHUB_REPO
+    from mathbank import __version__, UPSTREAM_REPO
+    from mathbank.update_source import get_update_source
     from mathbank.paths import project_instance_id
+    update_source = get_update_source()
     is_git_repo = (PROJECT_ROOT / ".git").exists()
     return {
         "current_version": __version__,
-        "repo": GITHUB_REPO,
+        "repo": update_source["repo"],
+        "upstream_repo": UPSTREAM_REPO,
+        "update_enabled": update_source["enabled"],
+        "update_reason": update_source["reason"],
         "is_git_repo": is_git_repo,
         "server_instance_id": SERVER_INSTANCE_ID,
         "project_instance_id": project_instance_id(),
@@ -2048,8 +2157,10 @@ def get_version_info():
 @app.get("/api/version/check-update")
 def check_version_update():
     """Check for latest release on GitHub."""
-    from mathbank import __version__, GITHUB_REPO
+    from mathbank import __version__
+    from mathbank.update_source import get_update_source
     from mathbank.ai_http import robust_request_get
+    update_source = get_update_source()
     
     is_git_repo = (PROJECT_ROOT / ".git").exists()
     current_ver = __version__
@@ -2061,14 +2172,19 @@ def check_version_update():
         "has_update": False,
         "release_title": "",
         "release_body": "",
-        "release_url": f"https://github.com/{GITHUB_REPO}/releases/latest",
+        "release_url": update_source["release_url"],
+        "update_enabled": update_source["enabled"],
+        "update_reason": update_source["reason"],
         "published_at": "",
         "assets": {},
         "is_git_repo": is_git_repo
     }
     
+    if not update_source["enabled"]:
+        return result
+
     try:
-        url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        url = f"https://api.github.com/repos/{update_source['repo']}/releases/latest"
         headers = {
             "Accept": "application/vnd.github.v3+json",
             "User-Agent": "MathBank-Question-Bank-App"
@@ -2616,6 +2732,90 @@ def require_expected_curriculum_version(expected_version_code):
             raise HTTPException(status_code=409, detail="教材版本已切换，请重新载入分类后保存")
 
 
+def resolve_course_curriculum(course, curriculum_id=None):
+    """Resolve the curriculum used by one course-scoped request."""
+
+    try:
+        return question_curriculum_id(
+            course, curriculum_id, math_version=get_active_version_code(),
+        )
+    except CourseCurriculumError as exc:
+        message = str(exc)
+        status = 409 if ("尚未核验" in message or "尚未开放" in message) else 400
+        raise HTTPException(status_code=status, detail=message) from exc
+
+
+def course_curriculum_tree(course, curriculum_id=None):
+    """Return the selected course tree for listing, filtering and prompts."""
+
+    resolved = resolve_course_curriculum(course, curriculum_id)
+    if course["subject"] == "math":
+        # Mathematics keeps the user's active, editable textbook tree.  The
+        # bundled resource is only the factory default and must not override
+        # custom metadata the teacher is currently working in.
+        return resolved, copy.deepcopy(get_current_curriculum())
+    try:
+        return resolved, course_curriculum_tree_data(course, resolved)
+    except CourseCurriculumError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def import_curriculum_tree(course, requested_curriculum_id, resolved_curriculum_id):
+    """Tree used by source/PDF/Word parsing.
+
+    A caller may explicitly request another bundled mathematics textbook; the
+    ordinary course scope still follows the teacher's active editable copy.
+    """
+
+    if course["subject"] == "math" and requested_curriculum_id not in (None, ""):
+        return course_curriculum_tree_data(course, resolved_curriculum_id)
+    return course_curriculum_tree(course, resolved_curriculum_id)[1]
+
+
+def require_course_curriculum_version(expected_version_code, course, curriculum_id=None):
+    """Pin writes to the course curriculum the client actually rendered."""
+
+    if course["subject"] == "math":
+        # Keep the legacy math lock path: callers and concurrency tests depend
+        # on this check running while the metadata save lock is held.
+        require_expected_curriculum_version(expected_version_code)
+        resolved = resolve_course_curriculum(course, curriculum_id)
+        if (expected_version_code is not None
+                and str(expected_version_code).strip().upper() != resolved):
+            raise HTTPException(
+                status_code=409,
+                detail="教材版本已切换，请重新载入分类后保存",
+            )
+        return resolved
+    resolved = resolve_course_curriculum(course, curriculum_id)
+    if expected_version_code is not None:
+        expected = str(expected_version_code).strip()
+        if expected != resolved:
+            raise HTTPException(status_code=409, detail="课程目录已切换，请重新载入分类后保存")
+    return resolved
+
+
+def question_serialization_curriculum(question):
+    """Choose the stored curriculum used when serializing one question."""
+
+    course_id = getattr(question, "course_id", None) or "cn_hs_math"
+    if course_id == "cn_hs_math":
+        return get_active_version_code()
+    course = require_question_course(course_id)
+    return default_curriculum_id(course)
+
+
+def require_question_course(course_id=None):
+    """Resolve a question's course without implicit physics fallback."""
+
+    try:
+        return require_available_course(course_id)
+    except CourseNotAvailable as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CourseScopeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def serialize_curriculum_write(function):
     """Bind a synchronous question write to one active textbook version."""
     @wraps(function)
@@ -3041,6 +3241,8 @@ app.include_router(create_agent_router(
 
 @app.get("/api/questions")
 def list_questions(
+    course_id: str = "cn_hs_math",
+    curriculum_id: Optional[str] = None,
     q: str = None,
     search: str = None,
     search_rule: Optional[List[str]] = Query(None),
@@ -3072,14 +3274,24 @@ def list_questions(
     chap_val = chapter or category_chapter
     know_val = knowledge or category_knowledge
     type_val = qtype or question_type
+    course = require_question_course(course_id)
+    curriculum_id = resolve_course_curriculum(course, curriculum_id)
+    if course["subject"] == "physics":
+        _, course_tree = course_curriculum_tree(course, curriculum_id)
+        try:
+            validate_question_location(
+                course_tree, comp_val, chap_val, know_val, field_prefix="筛选分类",
+            )
+        except CourseCurriculumError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Pin the DB and the effective textbook version together, then release the
     # settings lock before the potentially longer text search.
     with _METADATA_SAVE_LOCK:
         read_snapshot = QuestionReadSnapshot(db)
-        active_version = get_active_version_code()
+        active_version = curriculum_id
     try:
-        query = db.query(Question)
+        query = db.query(Question).filter(Question.course_id == course["id"])
         if page is not None:
             query = query.options(*question_summary_load_options())
         else:
@@ -3253,6 +3465,9 @@ def check_question_duplicates(payload: dict, db: Session = Depends(get_db)):
     if len(items) > 500:
         raise HTTPException(status_code=400, detail="单次最多查重 500 道题")
     max_candidates = max(1, min(int(payload.get("max_candidates") or 5), 10))
+    course = require_question_course(payload.get("course_id") or "cn_hs_math")
+    if payload.get("curriculum_id") not in (None, ""):
+        resolve_course_curriculum(course, payload.get("curriculum_id"))
 
     try:
         prepared = []
@@ -3260,6 +3475,9 @@ def check_question_duplicates(payload: dict, db: Session = Depends(get_db)):
         for index, raw_item in enumerate(items):
             if not isinstance(raw_item, dict):
                 raise ValueError(f"第 {index + 1} 道题格式无效")
+            item_course = raw_item.get("course_id")
+            if item_course not in (None, "") and item_course != course["id"]:
+                raise ValueError("一次查重不能混合不同课程的题目")
             duplicate_input = _duplicate_input_from_payload(raw_item)
             total_content_size += len(duplicate_input.content) + len(
                 duplicate_input.answer_markdown
@@ -3302,6 +3520,7 @@ def check_question_duplicates(payload: dict, db: Session = Depends(get_db)):
                 uploads_dir=UPLOAD_DIR,
                 url_prefix=UPLOAD_DIR_REL,
                 exclude_id=item["exclude_id"],
+                course_id=course["id"],
                 limit=max_candidates,
                 fingerprint_cache=candidate_cache,
                 diagnostics=recall_diagnostics,
@@ -3405,11 +3624,15 @@ def list_association_candidates(
     exclude_id: Optional[int] = Query(None, ge=1),
     seq_num: Optional[int] = Query(None, ge=1),
     question_id: Optional[int] = Query(None, ge=1),
+    course_id: str = "cn_hs_math",
+    curriculum_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
+    course = require_question_course(course_id)
+    resolve_course_curriculum(course, curriculum_id)
     result = find_association_candidates(
         db, q=q, page=page, page_size=page_size, exclude_id=exclude_id,
-        seq_num=seq_num, question_id=question_id,
+        seq_num=seq_num, question_id=question_id, course_id=course["id"],
     )
     sequences = get_seq_mapping(db, [item["id"] for item in result["items"]])
     for item in result["items"]:
@@ -3418,15 +3641,24 @@ def list_association_candidates(
 
 
 @app.get("/api/questions/{question_id}")
-def get_question(question_id: int, db: Session = Depends(get_db)):
+def get_question(
+    question_id: int, course_id: str = "cn_hs_math",
+    curriculum_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     q = db.query(Question).filter(Question.id == question_id).first()
     if not q:
         raise HTTPException(status_code=404, detail="未找到对应的题目")
+    requested_course = require_question_course(course_id)
+    curriculum_id = resolve_course_curriculum(requested_course, curriculum_id)
+    if (q.course_id or "cn_hs_math") != requested_course["id"]:
+        raise HTTPException(status_code=404, detail="题目不属于指定课程")
     seq_map = get_seq_mapping(db, [q.id])
-    q_dict = q.to_dict(get_active_version_code())
+    q_dict = q.to_dict(curriculum_id)
     q_dict["question_references"] = reference_payloads(db, [q]).get(q.id, [])
-    q_dict["version_code"] = get_active_version_code()
-    q_dict["active_version_code"] = get_active_version_code()
+    q_dict["version_code"] = curriculum_id
+    q_dict["active_version_code"] = curriculum_id
+    q_dict["curriculum_id"] = curriculum_id
     q_dict["curriculum_mappings"] = [mapping.to_dict() for mapping in q.curriculum_mappings]
     q_dict["seq_num"] = seq_map.get(q.id)
     return q_dict
@@ -3623,10 +3855,12 @@ def committed_question_response(
     try:
         db.refresh(db_question)
         seq_map = get_seq_mapping(db, [question_id])
-        question = db_question.to_dict(get_active_version_code())
+        serialization_version = question_serialization_curriculum(db_question)
+        question = db_question.to_dict(serialization_version)
         question["question_references"] = reference_payloads(db, [db_question]).get(question_id, [])
-        question["version_code"] = get_active_version_code()
-        question["active_version_code"] = get_active_version_code()
+        question["version_code"] = serialization_version
+        question["active_version_code"] = serialization_version
+        question["curriculum_id"] = serialization_version
         question["seq_num"] = seq_map.get(question_id)
         return {"status": "success", "question": question}
     except Exception as exc:
@@ -3830,6 +4064,8 @@ def duplicate_review_required_response(
 @project_import_guard(lambda: DOCUMENT_PROJECTS)
 def create_question(
     background_tasks: BackgroundTasks,
+    course_id: str = Form("cn_hs_math"),
+    curriculum_id: Optional[str] = Form(None),
     content: str = Form(...),
     question_type: str = Form(...),
     category_compulsory: str = Form(""),
@@ -3860,7 +4096,18 @@ def create_question(
     import_draft_revision: Optional[int] = Form(None),
     db: Session = Depends(get_db)
 ):
-    require_expected_curriculum_version(expected_version_code)
+    course = require_question_course(course_id)
+    curriculum_id = require_course_curriculum_version(
+        expected_version_code, course, curriculum_id,
+    )
+    _, course_tree = course_curriculum_tree(course, curriculum_id)
+    try:
+        category_compulsory, category_chapter, category_knowledge = validate_question_location(
+            course_tree, category_compulsory, category_chapter, category_knowledge,
+            strict=course["subject"] == "physics",
+        )
+    except CourseCurriculumError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     asset_promotions: list[tuple[Path, Path]] = []
     asset_path_map: dict[str, str] = {}
     duplicate_warning = ""
@@ -3875,13 +4122,20 @@ def create_question(
                 "tikz_reference_image_path":tikz_reference_image_path,"content_tikz_assets":content_tikz_assets,
                 "answer_tikz_assets":answer_tikz_assets,"figure_align":figure_align,"figure_size":figure_size,
                 "figure_align_custom":figure_align_custom,"image_layouts":image_layouts,"tags":tags,
-                "related_question_id":related_question_id,"sub_knowledge":sub_knowledge,"knowledge_points":knowledge_points})
+                "related_question_id":related_question_id,"sub_knowledge":sub_knowledge,
+                "knowledge_points":knowledge_points,
+                "course_id":course["id"],"curriculum_id":curriculum_id})
         if existing_question_id is not None:
             return committed_question_response(db, db.get(Question, existing_question_id), existing_question_id, operation="project_import_replay")
         parsed_sub_knowledge = normalize_sub_knowledge(sub_knowledge)
         parsed_knowledge_points = normalize_question_points(
             json.loads(knowledge_points) if knowledge_points is not None else [], db,
         )
+        if course["subject"] == "physics":
+            if parsed_sub_knowledge:
+                raise ValueError("物理课程题目不能携带数学细分知识点")
+            if parsed_knowledge_points:
+                raise ValueError("物理课程题目不能携带数学知识点标签")
         duplicate_snapshot_hash = str(duplicate_snapshot_hash or "").strip()
         duplicate_override = str(duplicate_override or "").strip()
         if duplicate_override not in {"", "independent"}:
@@ -3923,6 +4177,8 @@ def create_question(
         # 1. Fallback if third level is empty, default to chapter
             
         db_question = Question(
+            subject=course["subject"],
+            course_id=course["id"],
             content=content,
             question_type=question_type,
             category_compulsory=category_compulsory,
@@ -4010,10 +4266,10 @@ def create_question(
             upsert_question_fingerprint(db, db_question, question_fingerprint)
 
         # Save the question and its active curriculum mirror atomically.
-        active_version = get_active_version_code()
         curriculum_map = QuestionCurriculum(
             question_id=db_question.id,
-            version_code=active_version,
+            course_id=course["id"],
+            version_code=curriculum_id,
             compulsory=category_compulsory,
             chapter=category_chapter,
             knowledge=category_knowledge
@@ -4063,6 +4319,8 @@ def create_question(
 def update_question(
     question_id: int,
     background_tasks: BackgroundTasks,
+    course_id: Optional[str] = Form(None),
+    curriculum_id: Optional[str] = Form(None),
     content: str = Form(...),
     question_type: str = Form(...),
     category_compulsory: str = Form(""),
@@ -4090,10 +4348,28 @@ def update_question(
     duplicate_override: str = Form(""),
     db: Session = Depends(get_db)
 ):
-    require_expected_curriculum_version(expected_version_code)
     db_question = db.query(Question).filter(Question.id == question_id).first()
     if not db_question:
         raise HTTPException(status_code=404, detail="未找到对应的题目")
+    if course_id is not None:
+        requested_course = require_question_course(course_id)
+        if requested_course["id"] != (db_question.course_id or "cn_hs_math"):
+            raise HTTPException(status_code=409, detail="题目不能跨课程移动")
+    else:
+        requested_course = require_question_course(
+            db_question.course_id or "cn_hs_math"
+        )
+    curriculum_id = require_course_curriculum_version(
+        expected_version_code, requested_course, curriculum_id,
+    )
+    _, course_tree = course_curriculum_tree(requested_course, curriculum_id)
+    try:
+        category_compulsory, category_chapter, category_knowledge = validate_question_location(
+            course_tree, category_compulsory, category_chapter, category_knowledge,
+            strict=requested_course["subject"] == "physics",
+        )
+    except CourseCurriculumError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
         
     asset_promotions: list[tuple[Path, Path]] = []
     asset_path_map: dict[str, str] = {}
@@ -4105,6 +4381,11 @@ def update_question(
             normalize_question_points(json.loads(knowledge_points), db)
             if knowledge_points is not None else None
         )
+        if requested_course["subject"] == "physics":
+            if parsed_sub_knowledge:
+                raise ValueError("物理课程题目不能携带数学细分知识点")
+            if parsed_knowledge_points:
+                raise ValueError("物理课程题目不能携带数学知识点标签")
         duplicate_snapshot_hash = str(duplicate_snapshot_hash or "").strip()
         duplicate_override = str(duplicate_override or "").strip()
         if duplicate_override not in {"", "independent"}:
@@ -4199,14 +4480,16 @@ def update_question(
                         db_question.association_group_id = g2
         
         # Update or create active QuestionCurriculum mapping
-        active_version = get_active_version_code()
+        active_version = curriculum_id
         curriculum_map = db.query(QuestionCurriculum).filter(
             QuestionCurriculum.question_id == db_question.id,
+            QuestionCurriculum.course_id == (db_question.course_id or "cn_hs_math"),
             QuestionCurriculum.version_code == active_version
         ).first()
         if not curriculum_map:
             curriculum_map = QuestionCurriculum(
                 question_id=db_question.id,
+                course_id=db_question.course_id or "cn_hs_math",
                 version_code=active_version
             )
             db.add(curriculum_map)
@@ -4313,11 +4596,16 @@ def update_question_figure_align(
     question_id: int,
     background_tasks: BackgroundTasks,
     figure_align: str = Form("right"),
+    course_id: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     db_question = db.query(Question).filter(Question.id == question_id).first()
     if not db_question:
         raise HTTPException(status_code=404, detail="未找到对应的题目")
+    if course_id not in (None, ""):
+        course = require_question_course(course_id)
+        if (db_question.course_id or "cn_hs_math") != course["id"]:
+            raise HTTPException(status_code=409, detail="题目不属于指定课程")
     if figure_align not in FIGURE_ALIGN_VALUES:
         figure_align = "right"
     db_question.figure_align = figure_align
@@ -4339,11 +4627,16 @@ def update_question_figure_layout(
     background_tasks: BackgroundTasks,
     figure_align: str = Form(...),
     figure_size: str = Form(...),
+    course_id: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     db_question = db.query(Question).filter(Question.id == question_id).first()
     if not db_question:
         raise HTTPException(status_code=404, detail="未找到对应的题目")
+    if course_id not in (None, ""):
+        course = require_question_course(course_id)
+        if (db_question.course_id or "cn_hs_math") != course["id"]:
+            raise HTTPException(status_code=409, detail="题目不属于指定课程")
     if figure_align not in FIGURE_ALIGN_VALUES:
         raise HTTPException(status_code=400, detail="无效的插图排版位置")
     figure_size = str(figure_size or "").strip()
@@ -4364,10 +4657,20 @@ def update_question_figure_layout(
     }
 
 @app.get("/api/questions/{question_id}/associated")
-def get_associated_questions(question_id: int, db: Session = Depends(get_db)):
-    q = db.query(Question.id, Question.association_group_id).filter(Question.id == question_id).first()
+def get_associated_questions(
+    question_id: int,
+    course_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    q = db.query(
+        Question.id, Question.association_group_id, Question.course_id,
+    ).filter(Question.id == question_id).first()
     if not q:
         raise HTTPException(status_code=404, detail="未找到题目")
+    if course_id not in (None, ""):
+        course = require_question_course(course_id)
+        if (q.course_id or "cn_hs_math") != course["id"]:
+            raise HTTPException(status_code=404, detail="题目不属于指定课程")
         
     grp = q.association_group_id
     if not grp or grp.strip() == "":
@@ -4375,24 +4678,38 @@ def get_associated_questions(question_id: int, db: Session = Depends(get_db)):
         
     associated = db.query(Question).options(*question_summary_load_options()).filter(
         Question.association_group_id == grp,
+        Question.course_id == (q.course_id or "cn_hs_math"),
         Question.id != question_id
     ).all()
     
     seq_map = get_seq_mapping(db, [item.id for item in associated])
     refs_by_id = reference_payloads(db, associated)
-    return [{**item.to_summary_dict(get_active_version_code(), compact_knowledge_points=True), "question_references": refs_by_id.get(item.id, []), "seq_num": seq_map.get(item.id)} for item in associated]
+    return [{
+        **item.to_summary_dict(
+            question_serialization_curriculum(item), compact_knowledge_points=True,
+        ),
+        "question_references": refs_by_id.get(item.id, []),
+        "seq_num": seq_map.get(item.id),
+    } for item in associated]
 
 @app.post("/api/questions/{question_id}/associate")
 def associate_questions_endpoint(
     background_tasks: BackgroundTasks,
     question_id: int,
     target_id: int = Form(...),
+    course_id: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
     q1 = db.query(Question).filter(Question.id == question_id).first()
     q2 = db.query(Question).filter(Question.id == target_id).first()
     if not q1 or not q2:
         raise HTTPException(status_code=404, detail="未找到对应题目")
+    if course_id not in (None, ""):
+        course = require_question_course(course_id)
+        if (q1.course_id or "cn_hs_math") != course["id"]:
+            raise HTTPException(status_code=409, detail="题目不属于指定课程")
+    if (q1.course_id or "cn_hs_math") != (q2.course_id or "cn_hs_math"):
+        raise HTTPException(status_code=400, detail="不同课程的题目不能建立关联")
         
     if q1.id == q2.id:
         raise HTTPException(status_code=400, detail="不能自己和自己关联")
@@ -4411,8 +4728,12 @@ def associate_questions_endpoint(
             q1.association_group_id = g2
         else:
             if g1 != g2:
-                db.query(Question).filter(Question.association_group_id == g1).update(
-                    {Question.association_group_id: g2}, synchronize_session=False
+                db.query(Question).filter(
+                    Question.association_group_id == g1,
+                    Question.course_id == (q1.course_id or "cn_hs_math"),
+                ).update(
+                    {Question.association_group_id: g2},
+                    synchronize_session=False,
                 )
                 q1.association_group_id = g2
                 
@@ -4430,12 +4751,17 @@ def associate_questions_endpoint(
 def remove_association(
     question_id: int,
     background_tasks: BackgroundTasks,
+    course_id: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """Remove a question from its association group (bidirectional)."""
     q = db.query(Question).filter(Question.id == question_id).first()
     if not q:
         raise HTTPException(status_code=404, detail="未找到题目")
+    if course_id not in (None, ""):
+        course = require_question_course(course_id)
+        if (q.course_id or "cn_hs_math") != course["id"]:
+            raise HTTPException(status_code=404, detail="题目不属于指定课程")
 
     grp = q.association_group_id
     if not grp or grp.strip() == "":
@@ -4448,6 +4774,7 @@ def remove_association(
         # If only one other question remains in the group, clear its group too (no point in a group of one)
         remaining = db.query(Question).filter(
             Question.association_group_id == grp,
+            Question.course_id == (q.course_id or "cn_hs_math"),
             Question.id != question_id
         ).all()
 
@@ -4469,11 +4796,16 @@ def remove_association(
 def delete_question(
     question_id: int,
     background_tasks: BackgroundTasks,
+    course_id: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     db_question = db.query(Question).filter(Question.id == question_id).first()
     if not db_question:
         raise HTTPException(status_code=404, detail="未找到对应的题目")
+    if course_id not in (None, ""):
+        course = require_question_course(course_id)
+        if (db_question.course_id or "cn_hs_math") != course["id"]:
+            raise HTTPException(status_code=404, detail="题目不属于指定课程")
         
     image_paths_to_check = list(db_question.image_paths)
     try:
@@ -4832,16 +5164,23 @@ def _save_metadata_config(payload: dict, background_tasks: BackgroundTasks, db: 
 # ----------------- DB Statistics API -----------------
 
 @app.get("/api/stats")
-def get_db_stats(db: Session = Depends(get_db)):
+def get_db_stats(
+    course_id: str = "cn_hs_math",
+    curriculum_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    course = require_question_course(course_id)
+    resolve_course_curriculum(course, curriculum_id)
     try:
-        total = db.query(Question).count()
-        normal = db.query(Question).filter(Question.difficulty == "normal").count()
-        easy_error = db.query(Question).filter(Question.difficulty == "easy_error").count()
-        challenge = db.query(Question).filter(Question.difficulty == "challenge").count()
-        qiangji = db.query(Question).filter(Question.difficulty == "qiangji").count()
+        scoped = db.query(Question).filter(Question.course_id == course["id"])
+        total = scoped.count()
+        normal = scoped.filter(Question.difficulty == "normal").count()
+        easy_error = scoped.filter(Question.difficulty == "easy_error").count()
+        challenge = scoped.filter(Question.difficulty == "challenge").count()
+        qiangji = scoped.filter(Question.difficulty == "qiangji").count()
         
         # Cascaded Stage & Chapter Counts
-        rows = db.query(
+        rows = scoped.with_entities(
             Question.category_compulsory,
             Question.category_chapter
         ).all()
@@ -4873,7 +5212,7 @@ def get_db_stats(db: Session = Depends(get_db)):
         }
             
         # Daily additions in local time (UTC+8)
-        date_rows = db.query(Question.created_at).all()
+        date_rows = scoped.with_entities(Question.created_at).all()
         daily_adds = {}
         for (created_at,) in date_rows:
             if created_at:
@@ -4899,10 +5238,16 @@ def get_db_stats(db: Session = Depends(get_db)):
         )
 
 @app.get("/api/categories")
-def list_categories(db: Session = Depends(get_db)):
+def list_categories(
+    course_id: str = "cn_hs_math",
+    curriculum_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    course = require_question_course(course_id)
+    curriculum_id, base_tree = course_curriculum_tree(course, curriculum_id)
     # Initialize with predefined curriculum
     hierarchy = {}
-    for comp, chapters in get_current_curriculum().items():
+    for comp, chapters in base_tree.items():
         hierarchy[comp] = {}
         for chap, sections in chapters.items():
             hierarchy[comp][chap] = list(sections)
@@ -4912,7 +5257,7 @@ def list_categories(db: Session = Depends(get_db)):
         Question.category_compulsory,
         Question.category_chapter,
         Question.category_knowledge
-    ).distinct().all()
+    ).filter(Question.course_id == course["id"]).distinct().all()
     
     for comp, chap, know in results:
         if not comp:
@@ -4933,7 +5278,16 @@ def list_categories(db: Session = Depends(get_db)):
 @app.post("/api/ai/classify")
 def ai_classify(content: str = Form(...), answer_markdown: str = Form(""),
                 review_markdown: str = Form(""), db: Session = Depends(get_db),
-                expected_version_code: Optional[str] = Form(None), quality: Optional[str] = Form(None)):
+                expected_version_code: Optional[str] = Form(None),
+                quality: Optional[str] = Form(None),
+                course_id: str = Form("cn_hs_math"),
+                curriculum_id: Optional[str] = Form(None)):
+    if not isinstance(course_id, str):
+        course_id = "cn_hs_math"
+    if not isinstance(curriculum_id, str):
+        curriculum_id = None
+    if not isinstance(expected_version_code, str):
+        expected_version_code = None
     try:
         classify_policy = resolve_classification_policy(mode=quality if isinstance(quality, str) else None)
     except ValueError as exc:
@@ -4961,12 +5315,22 @@ def ai_classify(content: str = Form(...), answer_markdown: str = Form(""),
         )
         
     try:
-        version_code = get_active_version_code()
-        if isinstance(expected_version_code, str) and expected_version_code != version_code:
-            return JSONResponse(content={"status": "error", "message": "当前教材版本已变化，请刷新后重新分类。"}, status_code=409)
-        curriculum = copy.deepcopy(get_current_curriculum())
-        knowledge_catalog = copy.deepcopy(load_ai_knowledge_catalog(db))
-        system_instructions = build_classification_system_prompt(curriculum, knowledge_catalog)
+        course = require_question_course(course_id)
+        version_code = require_course_curriculum_version(
+            expected_version_code, course, curriculum_id,
+        )
+        _, curriculum = course_curriculum_tree(course, version_code)
+        if course["subject"] == "math":
+            knowledge_catalog = copy.deepcopy(load_ai_knowledge_catalog(db))
+            system_instructions = build_classification_system_prompt(
+                curriculum, knowledge_catalog,
+            )
+        else:
+            knowledge_catalog = []
+            catalog = course_curriculum_catalog(course, version_code)
+            system_instructions = build_physics_classification_system_prompt(
+                curriculum, course_name=course["name"], exam=catalog["exam"],
+            )
         question_input = {"content": content,
                           "answer_markdown": answer_markdown if isinstance(answer_markdown, str) else "",
                           "review_markdown": review_markdown if isinstance(review_markdown, str) else ""}
@@ -5022,7 +5386,11 @@ def ai_classify(content: str = Form(...), answer_markdown: str = Form(""),
         question_form_source = "structure" if structured_question_form else "ai"
         
         # Verification: make sure returned values exist in get_current_curriculum()
-        if get_active_version_code() != version_code:
+        if course["subject"] == "math":
+            current_version = get_active_version_code()
+        else:
+            current_version = resolve_course_curriculum(course, version_code)
+        if current_version != version_code:
             return JSONResponse(content={"status": "error", "message": "分类期间教材版本已变化，请保留当前编辑并重新分类。"}, status_code=409)
         curr = curriculum
         placement_valid = (compulsory in curr and chapter in curr[compulsory]
@@ -5046,10 +5414,17 @@ def ai_classify(content: str = Form(...), answer_markdown: str = Form(""),
                     "effective_enable_thinking": data.get("enable_thinking"),
                     "effective_reasoning_effort": data.get("reasoning_effort")},
                 "version_code": version_code,
+                "course_id": course["id"],
+                "curriculum_id": version_code,
                 **({"classification_review": placement["classification_review"]}
                    if "classification_review" in placement else {}),
             }
             
+    except HTTPException as exc:
+        return JSONResponse(
+            content={"status": "error", "message": str(exc.detail)},
+            status_code=exc.status_code,
+        )
     except Exception as e:
         return JSONResponse(
             content={"status": "error", "message": f"AI 智能分类失败: {str(e)}"},
@@ -5172,6 +5547,8 @@ def parse_paper_text_internal(
     report_attempt=lambda _event: None,
     connection_retry: bool = True,
     model_config: str = "",
+    course_id: str | None = None,
+    curriculum_id: str | None = None,
 ) -> list:
     """内部通用函数：调用选定的 LLM 接口，将 LaTeX 试卷内容解析拆分为结构化 JSON 卡片"""
     check_cancelled()
@@ -5185,11 +5562,28 @@ def parse_paper_text_internal(
     if not api_key:
         raise ValueError(f"未配置对应的 API Key ({provider.credential_label})，无法智能拆解试卷！请在工作台右上角设置面板进行配置。")
 
-    curriculum = copy.deepcopy(get_current_curriculum())
-    knowledge_catalog = copy.deepcopy(load_ai_knowledge_catalog())
-    system_instructions = build_pdf_parse_system_prompt(
-        curriculum, generate_answers_bool, knowledge_catalog
-    )
+    course = require_question_course(course_id) if course_id else None
+    if course and course["subject"] == "physics":
+        resolved_curriculum = resolve_course_curriculum(course, curriculum_id)
+        _, curriculum = course_curriculum_tree(course, resolved_curriculum)
+        knowledge_catalog = []
+        exam = course_curriculum_catalog(course, resolved_curriculum)["exam"]
+        system_instructions = build_pdf_parse_system_prompt(
+            curriculum, generate_answers_bool, [],
+            subject="physics", exam=exam,
+        )
+    else:
+        if course:
+            resolved_curriculum = resolve_course_curriculum(course, curriculum_id)
+            curriculum = import_curriculum_tree(
+                course, curriculum_id, resolved_curriculum,
+            )
+        else:
+            curriculum = copy.deepcopy(get_current_curriculum())
+        knowledge_catalog = copy.deepcopy(load_ai_knowledge_catalog())
+        system_instructions = build_pdf_parse_system_prompt(
+            curriculum, generate_answers_bool, knowledge_catalog
+        )
 
     max_output_tokens = 65536
 
@@ -5240,10 +5634,18 @@ def parse_paper_text_internal(
         bind_ai_knowledge_catalog(question, knowledge_catalog)
     if preserve_source_answers:
         validate_import_knowledge(parsed_questions, curriculum, diagnostics=diagnostics)
+        if course and course["subject"] == "physics":
+            for question in parsed_questions:
+                question["knowledge_points"] = []
+                question["sub_knowledge"] = []
         # Compare the original response before answer filtering or formula edits.
         return parsed_questions
 
     validate_import_knowledge(parsed_questions, curriculum, diagnostics=diagnostics)
+    if course and course["subject"] == "physics":
+        for question in parsed_questions:
+            question["knowledge_points"] = []
+            question["sub_knowledge"] = []
 
     # 强制进行静默净化：若未勾选自动生成答案，则对于没有带有 [EXTRACTED_ORIGINAL] 的解析和解答，将其强行抹平为空。
     for q in parsed_questions:
@@ -5278,7 +5680,28 @@ def ai_parse_paper(
     image_mapping_json: str = Form("{}"),
     generate_answers: str = Form("false"),
     source_format: str = Form("tex"),
+    course_id: str = Form("cn_hs_math"),
+    curriculum_id: Optional[str] = Form(None),
+    expected_version_code: Optional[str] = Form(None),
 ):
+    # Direct Python callers (tests, CLI helpers) see the raw ``Form`` defaults
+    # instead of the strings FastAPI injects for HTTP requests.
+    if not isinstance(latex_content, str):
+        latex_content = ""
+    if not isinstance(paper_title, str):
+        paper_title = ""
+    if not isinstance(image_mapping_json, str):
+        image_mapping_json = "{}"
+    if not isinstance(generate_answers, str):
+        generate_answers = "false"
+    if not isinstance(source_format, str):
+        source_format = "tex"
+    if not isinstance(course_id, str):
+        course_id = "cn_hs_math"
+    if not isinstance(curriculum_id, str):
+        curriculum_id = None
+    if not isinstance(expected_version_code, str):
+        expected_version_code = None
     if source_format not in ("tex", "markdown"):
         return JSONResponse(
             content={"status": "error", "message": "源码格式仅支持 tex 或 markdown。"},
@@ -5322,9 +5745,27 @@ def ai_parse_paper(
         if not paper_title.strip() and tex_result["title"]:
             paper_title = tex_result["title"]
 
-        curriculum = copy.deepcopy(get_current_curriculum())
-        knowledge_catalog = load_ai_knowledge_catalog()
-        system_instructions = build_import_parse_system_prompt(curriculum, source_format, knowledge_catalog)
+        course = require_question_course(course_id)
+        resolved_curriculum = require_course_curriculum_version(
+            expected_version_code, course, curriculum_id,
+        )
+        curriculum = import_curriculum_tree(
+            course, curriculum_id, resolved_curriculum,
+        )
+        if course["subject"] == "physics":
+            knowledge_catalog = []
+            exam = course_curriculum_catalog(
+                course, resolved_curriculum,
+            )["exam"]
+            system_instructions = build_import_parse_system_prompt(
+                curriculum, source_format, [],
+                subject="physics", exam=exam,
+            )
+        else:
+            knowledge_catalog = load_ai_knowledge_catalog()
+            system_instructions = build_import_parse_system_prompt(
+                curriculum, source_format, knowledge_catalog,
+            )
 
         max_output_tokens = 65536
 
@@ -5358,6 +5799,10 @@ def ai_parse_paper(
             response.json(), diagnostics=tex_diagnostics,
         )
         validate_import_knowledge(parsed_questions, curriculum, diagnostics=tex_diagnostics)
+        if course["subject"] == "physics":
+            for question in parsed_questions:
+                question["knowledge_points"] = []
+                question["sub_knowledge"] = []
         lock_report = reconcile_visible_math(
             parsed_questions, math_locks, tex_result["model_source"],
             tex_comments=source_format != "markdown",
@@ -5491,6 +5936,14 @@ def ai_parse_paper(
             "tex_diagnostics": tex_diagnostics,
             "source_format": source_format,
         }
+    except HTTPException as exc:
+        return JSONResponse(
+            content={
+                "status": "error", "message": str(exc.detail),
+                "tex_diagnostics": locals().get("tex_diagnostics", {}),
+            },
+            status_code=exc.status_code,
+        )
     except Exception as e:
         return JSONResponse(
             content={
@@ -5501,8 +5954,16 @@ def ai_parse_paper(
         )
 
 @app.get("/api/sources")
-def get_sources(db: Session = Depends(get_db)):
-    results = db.query(Question.source).distinct().all()
+def get_sources(
+    course_id: str = "cn_hs_math",
+    curriculum_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    course = require_question_course(course_id)
+    resolve_course_curriculum(course, curriculum_id)
+    results = db.query(Question.source).filter(
+        Question.course_id == course["id"]
+    ).distinct().all()
     sources = []
     for r in results:
         val = r[0]
@@ -5994,10 +6455,19 @@ def find_source_page_by_overlap(q_text: str, ocr_results: list) -> int:
     return best_page
 
 @app.get("/api/paper/reference-exams")
-def paper_reference_exams(db: Session = Depends(get_db)):
+def paper_reference_exams(
+    course_id: str = "cn_hs_math",
+    curriculum_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """Read bounded metadata for the local reference selector; never call AI."""
     from mathbank.paper_selection import list_reference_exams
-    return {"status": "success", "data": list_reference_exams(db)}
+    course = require_question_course(course_id)
+    resolve_course_curriculum(course, curriculum_id)
+    return {
+        "status": "success",
+        "data": list_reference_exams(db, course_id=course["id"]),
+    }
 
 
 @app.post("/api/paper/ai-select")
@@ -6016,7 +6486,10 @@ def ai_select_paper(payload: dict, db: Session = Depends(get_db)):
     from mathbank.paper_standards import build_paper_standard_context
     from mathbank.paper_standard_alignment import validate_standard_alignment, standard_analysis_text
 
-    require_expected_curriculum_version(payload.get("expected_version_code"))
+    course = require_question_course(payload.get("course_id") or "cn_hs_math")
+    require_course_curriculum_version(
+        payload.get("expected_version_code"), course, payload.get("curriculum_id"),
+    )
     try:
         request = parse_selection_request(payload)
         prompt = payload.get("prompt", "").strip()
@@ -6032,7 +6505,7 @@ def ai_select_paper(payload: dict, db: Session = Depends(get_db)):
         query = db.query(Question).options(
             selectinload(Question.curriculum_mappings).selectinload(QuestionCurriculum.sub_knowledge_rows),
             selectinload(Question.knowledge_points).selectinload(QuestionKnowledgePoint.point),
-        )
+        ).filter(Question.course_id == course["id"])
         if request["question_type"]:
             query = query.filter(Question.question_type == request["question_type"])
         elif request["question_types"]:
@@ -6059,7 +6532,9 @@ def ai_select_paper(payload: dict, db: Session = Depends(get_db)):
         query = apply_question_search(query, payload.get("keyword", ""))
         query = apply_question_search_rules(query, payload.get("search_rules", []))
         reference = build_reference_context(
-            db, "none" if reference_mode == "none" else payload.get("reference_key"))
+            db, "none" if reference_mode == "none" else payload.get("reference_key"),
+            course_id=course["id"],
+        )
         warnings = list(reference["warnings"])
         counts = request["type_counts"] or None
         # A full-paper request may adopt an observed complete blueprint. A
@@ -6076,7 +6551,25 @@ def ai_select_paper(payload: dict, db: Session = Depends(get_db)):
         )
         # Pure local matching. Freeze once and share with both existing model
         # stages, including source IDs/pages and explicit teacher boundaries.
-        standard_context = build_paper_standard_context(prompt, filters=payload, candidates=candidates)
+        if course["subject"] == "math":
+            standard_context = build_paper_standard_context(
+                prompt, filters=payload, candidates=candidates,
+            )
+        else:
+            standard_context = {
+                "enabled": False,
+                "source": {},
+                "mode": "physics",
+                "matched_topics": [],
+                "rules": [],
+                "requirements": [],
+                "references": [],
+                "warnings": [
+                    "物理课程不使用数学课标选摘；本次仅按物理课程目录、候选题文和教师要求选题。"
+                ],
+                "teacher_constraints": [],
+                "usage_policy": "不得把数学课标条目套用于物理选题。",
+            }
         warnings.extend(standard_context.get("warnings", []))
     except HTTPException:
         raise
@@ -6114,6 +6607,7 @@ def ai_select_paper(payload: dict, db: Session = Depends(get_db)):
             is_review_intent=request["review"], reference_context=reference,
             selection_plan={**selection_plan, "phase": phase, "shortlist_limit": requested_count},
             standard_context=standard_context,
+            subject=course["subject"], course_name=course["name"],
         )
         message_content = ([{"type": "text", "text": user_content}, *image_parts]
                            if image_parts else user_content)
@@ -6273,7 +6767,10 @@ def ai_select_paper(payload: dict, db: Session = Depends(get_db)):
             reasons.append(item["text_unavailable_reason"])
         if reasons:
             ai_analysis += "未完整复读原因：" + "、".join(reasons) + "。"
-    return {"status": "success", "data": [{**q.to_dict(get_active_version_code()), "seq_num": sequence.get(q.id)} for q in selected],
+    return {"status": "success", "data": [{
+        **q.to_dict(question_serialization_curriculum(q)),
+        "seq_num": sequence.get(q.id),
+    } for q in selected],
             "count": len(selected), "ai_analysis": ai_analysis, "model_used": model_label,
             "fallback": engine_name == "local", "selection_engine": engine_name,
             "warnings": list(dict.fromkeys(warnings)), "selection_summary": summary,
@@ -6485,6 +6982,8 @@ def run_pdf_parsing_task(
     pdf_mineru_figures="system",
     pdf_ocr_engine="existing",
     pdf_parse_model="",
+    course_id=None,
+    curriculum_id=None,
 ):
     """PDF parsing with bounded OCR concurrency and cooperative cancellation."""
 
@@ -6499,6 +6998,14 @@ def run_pdf_parsing_task(
         merge_recovered_questions)
 
     recovery = copy.deepcopy(resume_state) if isinstance(resume_state, dict) else None
+    task_course = require_question_course(course_id) if course_id else None
+    task_curriculum = None
+    task_curriculum_id = None
+    if task_course and task_course["subject"] == "physics":
+        task_curriculum_id = resolve_course_curriculum(task_course, curriculum_id)
+        _, task_curriculum = course_curriculum_tree(
+            task_course, task_curriculum_id,
+        )
 
     temp_assets: list[str] = []
     tmp_pdf_path = Path(TMP_UPLOAD_DIR) / f"{task_id}.pdf"
@@ -7356,6 +7863,8 @@ def run_pdf_parsing_task(
                 locked_source, False, diagnostics=diagnostics, pdf_retry=True,
                 preserve_source_answers=preserve_source_answers, pdf_max_attempts=max_attempts,
                 check_cancelled=check_pdf_cancelled, report_attempt=report_pdf_split_attempt,
+                course_id=task_course["id"] if task_course else None,
+                curriculum_id=task_curriculum_id,
                 **({"model_config": pdf_parse_model} if pdf_parse_model else {}))
 
         pdf_preserved_indices = frozenset()
@@ -7370,9 +7879,11 @@ def run_pdf_parsing_task(
                     native_evidence=native_evidence, witnesses=witnesses,
                     transcript_normalizer=process_ocr_illustrations, figure_assets=source_assets)
                 diagnostics["pdf_hybrid"] = pdf_hybrid_plan_diagnostics(pdf_plan)
-                if pdf_plan["mode"] in {"hybrid", "whole_metadata"}:
+                if (pdf_plan["mode"] in {"hybrid", "whole_metadata"}
+                        and not (task_course and task_course["subject"] == "physics")):
                     parse_model = pdf_parse_model or os.getenv("PREFER_PARSE_MODEL") or os.getenv("DEEPSEEK_PARSE_MODEL", "deepseek-flash")
-                    hybrid_result = request_pdf_hybrid(pdf_plan, get_current_curriculum(),
+                    hybrid_result = request_pdf_hybrid(
+                        pdf_plan, task_curriculum or get_current_curriculum(),
                         provider=resolve_text_provider(parse_model), post=post_chat_completion, diagnostics=diagnostics,
                         normalize_fillin=normalize_fillin_macro, task_id=task_id, generation=0,
                         check_cancelled=check_pdf_cancelled,
@@ -7585,7 +8096,8 @@ def parse_page_range(range_str: str, total_pages: int) -> list:
 
 # ----------------- PDF Upload & Task Routing Endpoints -----------------
 
-def _queue_document_upload(content, filename, document_type, client_request_id, options, function, call_args):
+def _queue_document_upload(content, filename, document_type, client_request_id, options,
+                           function, call_args, function_kwargs=None):
     """One request identity owns one immutable upload and one dispatch."""
     with DOCUMENT_TASKS._request_lock:
         if client_request_id:
@@ -7618,8 +8130,15 @@ def _queue_document_upload(content, filename, document_type, client_request_id, 
         task_id = str(uuid.uuid4())
         if document_type == "pdf" and DOCUMENT_PROJECTS and not PDF_CLOUD_ONLY:
             try:
-                project = DOCUMENT_PROJECTS.create(content, filename, options,
-                    copy.deepcopy(get_current_curriculum()), task_id)
+                project_course = require_question_course(
+                    options.get("course_id") or "cn_hs_math",
+                )
+                _resolved, project_curriculum = course_curriculum_tree(
+                    project_course, options.get("curriculum_id"),
+                )
+                project = DOCUMENT_PROJECTS.create(
+                    content, filename, options, project_curriculum, task_id,
+                )
                 project_id = project["project_id"]
             except DocumentProjectError as exc:
                 raise HTTPException(400, str(exc)) from exc
@@ -7632,7 +8151,10 @@ def _queue_document_upload(content, filename, document_type, client_request_id, 
                 DOCUMENT_TASKS.cancel(task_id)
             else:
                 try:
-                    DOCUMENT_TASKS.submit(task_id, function, task_id, content, filename, *call_args)
+                    DOCUMENT_TASKS.submit(
+                        task_id, function, task_id, content, filename,
+                        *call_args, **(function_kwargs or {}),
+                    )
                 except ValueError:
                     if not DOCUMENT_TASKS.is_cancelled(task_id):
                         raise
@@ -7668,10 +8190,16 @@ def upload_pdf_task(
     pdf_mineru_figures: str = Form("system"),
     pdf_ocr_engine: str = Form("existing"),
     pdf_parse_model: str = Form(""),
+    course_id: str = Form("cn_hs_math"),
+    curriculum_id: Optional[str] = Form(None),
 ):
     try:
         from mathbank.mineru_api import mineru_api_token
 
+        course = require_question_course(course_id)
+        resolved_curriculum = require_course_curriculum_version(
+            None, course, curriculum_id,
+        )
         client_request_id = _document_request_id(client_request_id)
         if pdf_strategy not in PDF_STRATEGIES:
             return JSONResponse(content={"status": "error", "message": "不支持的 PDF 解析策略。"}, status_code=400)
@@ -7711,7 +8239,8 @@ def upload_pdf_task(
         options = dict(
             generate_answers=generate_answers_bool, page_range=page_range, pdf_strategy=pdf_strategy,
             pdf_verify_suspicions=bool(pdf_verify_suspicions) if pdf_strategy == "layout_aware" else False,
-            paper_title=paper_title.strip())
+            paper_title=paper_title.strip(), course_id=course["id"],
+            curriculum_id=resolved_curriculum)
         visual_options = {}
         if whole_page_ocr_dpi != 150:
             visual_options["whole_page_ocr_dpi"] = whole_page_ocr_dpi
@@ -7722,7 +8251,8 @@ def upload_pdf_task(
         if pdf_parse_model:
             visual_options["pdf_parse_model"] = pdf_parse_model
         options.update(visual_options)
-        worker = partial(run_pdf_parsing_task, **visual_options) if visual_options else run_pdf_parsing_task
+        visual_options.update(course_id=course["id"], curriculum_id=resolved_curriculum)
+        worker = partial(run_pdf_parsing_task, **visual_options)
         return _queue_document_upload(content, filename, "pdf", client_request_id, options,
             worker, (generate_answers_bool, page_range, pdf_strategy, options["pdf_verify_suspicions"]))
     except HTTPException:
@@ -7785,9 +8315,19 @@ def run_docx_parsing_task(
     generate_answers: bool = False,
     docx_verify_suspicions: bool = True,
     resume_state: dict | None = None,
+    course_id=None,
+    curriculum_id=None,
 ):
     temp_assets = []
     diagnostics = {}
+    task_course = require_question_course(course_id) if course_id else None
+    task_curriculum = None
+    task_curriculum_id = None
+    if task_course and task_course["subject"] == "physics":
+        task_curriculum_id = resolve_course_curriculum(task_course, curriculum_id)
+        _, task_curriculum = course_curriculum_tree(
+            task_course, task_curriculum_id,
+        )
     try:
         DOCUMENT_TASKS.check_cancelled(task_id)
         DOCUMENT_TASKS.update(
@@ -7893,23 +8433,33 @@ def run_docx_parsing_task(
                 raise ValueError("Word 提取内容已变化，不能复用旧拆题结果。")
             parsed_questions = copy.deepcopy(resume_state.get("split_questions"))
             preserved_indices = frozenset(resume_state.get("preserved_indices", []))
-        if parsed_questions is None and hybrid_plan is not None and hybrid_plan["mode"] == "hybrid":
+        if (parsed_questions is None and hybrid_plan is not None
+                and hybrid_plan["mode"] == "hybrid"
+                and not (task_course and task_course["subject"] == "physics")):
             parse_model = os.getenv("PREFER_PARSE_MODEL") or os.getenv("DEEPSEEK_PARSE_MODEL", "deepseek-flash")
-            result = request_word_hybrid(hybrid_plan, get_current_curriculum(),
+            result = request_word_hybrid(
+                hybrid_plan, task_curriculum or get_current_curriculum(),
                 provider=resolve_text_provider(parse_model), post=post_chat_completion, diagnostics=diagnostics,
                 normalize_fillin=normalize_fillin_macro, task_id=task_id, generation=0,
                 check_cancelled=lambda: DOCUMENT_TASKS.check_cancelled(task_id),
-                full_source_fallback=lambda: parse_paper_text_internal(locked_markdown_content, False,
-                    diagnostics=diagnostics, preserve_source_answers=True, connection_retry=False,
-                    check_cancelled=lambda: DOCUMENT_TASKS.check_cancelled(task_id)))
+                full_source_fallback=lambda: parse_paper_text_internal(
+                    locked_markdown_content, False,
+                    diagnostics=diagnostics, preserve_source_answers=True,
+                    connection_retry=False,
+                    check_cancelled=lambda: DOCUMENT_TASKS.check_cancelled(task_id),
+                    course_id=task_course["id"] if task_course else None,
+                    curriculum_id=task_curriculum_id))
             parsed_questions = result.questions
             preserved_indices = result.preserved_indices
             diagnostics["word_hybrid"]["partial"] = result.partial
-        if parsed_questions is None and source_plan is not None and source_plan["eligible"]:
+        if (parsed_questions is None and source_plan is not None
+                and source_plan["eligible"]
+                and not (task_course and task_course["subject"] == "physics")):
             parse_model = os.getenv("PREFER_PARSE_MODEL") or os.getenv("DEEPSEEK_PARSE_MODEL", "deepseek-flash")
             try:
                 parsed_questions = request_word_source_metadata(
-                    source_plan, get_current_curriculum(), provider=resolve_text_provider(parse_model),
+                    source_plan, task_curriculum or get_current_curriculum(),
+                    provider=resolve_text_provider(parse_model),
                     post=post_chat_completion, diagnostics=diagnostics,
                     normalize_fillin=normalize_fillin_macro,
                     check_cancelled=lambda: DOCUMENT_TASKS.check_cancelled(task_id),
@@ -7932,6 +8482,8 @@ def run_docx_parsing_task(
                 diagnostics=diagnostics,
                 preserve_source_answers=True,
                 **fallback_kwargs,
+                course_id=task_course["id"] if task_course else None,
+                curriculum_id=task_curriculum_id,
             )
         # Keep a bounded task-local baseline before local validation. A local
         # post-processing failure must not erase the already paid split output.
@@ -8081,8 +8633,14 @@ def upload_docx_task(
     docx_verify_suspicions: str = Form("true"),
     client_request_id: str = Form(""),
     paper_title: str = Form(""),
+    course_id: str = Form("cn_hs_math"),
+    curriculum_id: Optional[str] = Form(None),
 ):
     try:
+        course = require_question_course(course_id)
+        resolved_curriculum = require_course_curriculum_version(
+            None, course, curriculum_id,
+        )
         client_request_id = _document_request_id(client_request_id)
         generate_answers_bool = generate_answers.lower() in ("true", "1", "yes")
         
@@ -8110,9 +8668,11 @@ def upload_docx_task(
         options = dict(
             generate_answers=generate_answers_bool,
             docx_verify_suspicions=docx_verify_suspicions.lower() in ("true", "1", "yes"),
-            paper_title=paper_title.strip())
+            paper_title=paper_title.strip(),
+            course_id=course["id"], curriculum_id=resolved_curriculum)
         return _queue_document_upload(content, filename, "docx", client_request_id, options,
-            run_docx_parsing_task, (generate_answers_bool, options["docx_verify_suspicions"]))
+            run_docx_parsing_task, (generate_answers_bool, options["docx_verify_suspicions"]),
+            function_kwargs={"course_id": course["id"], "curriculum_id": resolved_curriculum})
     except HTTPException:
         raise
     except Exception as e:
@@ -8169,9 +8729,13 @@ def resume_document_task(task_id: str):
     option_names = ({"generate_answers", "page_range", "pdf_strategy", "pdf_verify_suspicions", "paper_title"}
                     if source.get("document_type") == "pdf" else
                     {"generate_answers", "docx_verify_suspicions", "paper_title"})
+    course_option_names = option_names | {"course_id", "curriculum_id"}
     optional = PDF_OPTIONAL_SETTINGS if source.get("document_type") == "pdf" else frozenset()
     if (source.get("document_type") not in {"pdf", "docx"} or not isinstance(options, dict)
-            or set(options) - optional != option_names or not isinstance(source.get("filename"), str)):
+            or (set(options) - optional) not in (option_names, course_option_names)
+            or not isinstance(source.get("filename"), str)
+            or ("course_id" in options and not isinstance(options.get("course_id"), str))
+            or ("curriculum_id" in options and not isinstance(options.get("curriculum_id"), str))):
         raise HTTPException(status_code=409, detail="原文档解析设置不完整，请重新上传。")
     if (type(options.get("generate_answers")) is not bool or not isinstance(options.get("paper_title"), str)
             or (source["document_type"] == "pdf" and (
@@ -8185,7 +8749,13 @@ def resume_document_task(task_id: str):
                 or (options.get("page_range") is not None and not isinstance(options["page_range"], str))))
             or (source["document_type"] == "docx" and type(options.get("docx_verify_suspicions")) is not bool)):
         raise HTTPException(status_code=409, detail="原文档解析设置无效，请重新上传。")
+    resume_course = require_question_course(options.get("course_id") or "cn_hs_math")
+    resume_curriculum = resolve_course_curriculum(
+        resume_course, options.get("curriculum_id"),
+    )
     options = dict(options)
+    options["course_id"] = resume_course["id"]
+    options["curriculum_id"] = resume_curriculum
     options.pop("paper_title", None)
     function = run_pdf_parsing_task if source["document_type"] == "pdf" else run_docx_parsing_task
     checkpoint = (task.get("pdf_resume_state") if source["document_type"] == "pdf"
@@ -8487,16 +9057,26 @@ def clear_temp_crops(payload: dict):
 # ----------------- Paper Generation API Endpoints -----------------
 
 @app.get("/api/paper/questions")
-def get_paper_questions(ids: str = "", db: Session = Depends(get_db)):
+def get_paper_questions(
+    ids: str = "",
+    course_id: str = "cn_hs_math",
+    curriculum_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """获取指定 ID 列表的完整题目数据（组卷试题篮批量拉取）"""
     if not ids:
         return {"status": "success", "data": []}
     try:
+        course = require_question_course(course_id)
+        curriculum_id = resolve_course_curriculum(course, curriculum_id)
         id_list = [int(i.strip()) for i in ids.split(",") if i.strip().isdigit()]
         if not id_list:
             return {"status": "success", "data": []}
-        questions = db.query(Question).filter(Question.id.in_(id_list)).all()
-        q_map = {q.id: q.to_dict(get_active_version_code()) for q in questions}
+        questions = db.query(Question).filter(
+            Question.id.in_(id_list),
+            Question.course_id == course["id"],
+        ).all()
+        q_map = {q.id: q.to_dict(curriculum_id) for q in questions}
         refs_by_id = reference_payloads(db, questions)
         seq_map = get_seq_mapping(db, id_list)
         result = [
@@ -8521,7 +9101,7 @@ def save_paper(payload: dict, background_tasks: BackgroundTasks, db: Session = D
 
         if not title or len(title) > 200 or len(subtitle) > 200:
             raise ValueError("试卷标题不能为空，且标题与副标题均不能超过 200 字。")
-        if paper_type not in {"exam", "quiz", "exam_19"}:
+        if paper_type not in PAPER_TYPES:
             raise ValueError("不支持的试卷模板。")
         if not isinstance(questions_payload, list) or not questions_payload:
             raise ValueError("试卷中至少需要包含一道题目。")
@@ -8549,6 +9129,20 @@ def save_paper(payload: dict, background_tasks: BackgroundTasks, db: Session = D
         missing_ids = sorted(seen_question_ids - set(question_map))
         if missing_ids:
             raise ValueError("试卷中包含已删除或不存在的题目。")
+        paper_course_ids = {
+            (question.course_id or "cn_hs_math") for question in questions
+        }
+        if len(paper_course_ids) != 1:
+            raise ValueError("一份试卷不能混合不同课程或学科的题目。")
+        derived_course_id = next(iter(paper_course_ids))
+        requested_course_id = payload.get("course_id")
+        if requested_course_id not in (None, "") and requested_course_id != derived_course_id:
+            raise ValueError("试卷课程与所选题目不一致。")
+        paper_course = require_question_course(derived_course_id)
+        requested_curriculum_id = payload.get("curriculum_id")
+        paper_curriculum_id = resolve_course_curriculum(
+            paper_course, requested_curriculum_id,
+        )
 
         total_score = sum(score for _question_id, score in normalized_items)
         
@@ -8558,6 +9152,17 @@ def save_paper(payload: dict, background_tasks: BackgroundTasks, db: Session = D
         meta["show_secret"] = payload.get("show_secret", True)
         meta["show_notice"] = payload.get("show_notice", True)
         meta["section_order"] = normalize_section_order(payload.get("section_order", meta.get("section_order")))
+        meta["course_id"] = paper_course["id"]
+        meta["curriculum_id"] = paper_curriculum_id
+        structure = validate_paper_structure(
+            paper_course, paper_curriculum_id, paper_type,
+            [
+                {"question_type": question_map[qid].question_type, "score": score}
+                for qid, score in normalized_items
+            ],
+            meta,
+        )
+        meta["exam_structure"] = structure
 
         paper = Paper(
             title=title,
@@ -8583,20 +9188,26 @@ def save_paper(payload: dict, background_tasks: BackgroundTasks, db: Session = D
         db.commit()
         schedule_database_export(background_tasks, operation="save_paper")
         return {"status": "success", "message": "试卷保存成功！", "paper_id": paper.id}
-    except (TypeError, ValueError) as e:
+    except (TypeError, ValueError, PaperStructureError) as e:
         db.rollback()
         return JSONResponse(
             content={"status": "error", "message": str(e)}, status_code=400
         )
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
         return JSONResponse(content={"status": "error", "message": f"保存试卷失败: {str(e)}"}, status_code=500)
 
 @app.get("/api/papers")
-def list_papers(db: Session = Depends(get_db)):
+def list_papers(course_id: Optional[str] = None, db: Session = Depends(get_db)):
     """获取所有历史试卷列表"""
     try:
         from sqlalchemy import func
+        scoped_course = None
+        if course_id not in (None, ""):
+            scoped_course = require_question_course(course_id)["id"]
 
         rows = (
             db.query(Paper, func.count(PaperQuestion.id))
@@ -8608,6 +9219,8 @@ def list_papers(db: Session = Depends(get_db)):
         result = []
         for p, q_count in rows:
             d = p.to_dict()
+            if scoped_course is not None and d.get("course_id") != scoped_course:
+                continue
             d["question_count"] = int(q_count)
             result.append(d)
         return {"status": "success", "data": result}
@@ -8615,43 +9228,71 @@ def list_papers(db: Session = Depends(get_db)):
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 @app.get("/api/papers/{paper_id}")
-def get_paper_detail(paper_id: int, db: Session = Depends(get_db)):
+def get_paper_detail(
+    paper_id: int, course_id: Optional[str] = None, db: Session = Depends(get_db),
+):
     """获取单张试卷的详细信息及关联题目列表（用于一键载入）"""
     try:
         paper = db.query(Paper).filter(Paper.id == paper_id).first()
         if not paper:
             return JSONResponse(content={"status": "error", "message": "试卷不存在"}, status_code=404)
+        if course_id not in (None, ""):
+            expected_course = require_question_course(course_id)["id"]
+            if paper.to_dict().get("course_id") != expected_course:
+                return JSONResponse(content={"status": "error", "message": "试卷不属于指定课程"}, status_code=404)
         
         rows = (
             db.query(PaperQuestion, Question)
             .join(Question, Question.id == PaperQuestion.question_id)
             .filter(PaperQuestion.paper_id == paper_id)
+            .filter(Question.course_id == (
+                paper.to_dict().get("course_id") or "cn_hs_math"
+            ))
             .order_by(PaperQuestion.order_index.asc())
             .all()
         )
 
+        paper_meta = paper.to_dict()
+        paper_course = require_question_course(
+            paper_meta.get("course_id") or "cn_hs_math"
+        )
+        paper_curriculum_id = resolve_course_curriculum(
+            paper_course, paper_meta.get("curriculum_id"),
+        )
         questions_list = [
             {
                 "id": question.id,
                 "score": paper_question.score,
-                "question": question.to_dict(get_active_version_code()),
+                "question": question.to_dict(paper_curriculum_id),
             }
             for paper_question, question in rows
         ]
                 
-        result = paper.to_dict()
+        result = paper_meta
         result["questions"] = questions_list
         return {"status": "success", "data": result}
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 @app.delete("/api/papers/{paper_id}")
-def delete_paper(paper_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def delete_paper(
+    paper_id: int,
+    background_tasks: BackgroundTasks,
+    course_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     """删除指定的历史试卷，并同步扣减关联题目的 usage_count"""
     try:
         paper = db.query(Paper).filter(Paper.id == paper_id).first()
         if not paper:
             return JSONResponse(content={"status": "error", "message": "试卷不存在"}, status_code=404)
+        if course_id not in (None, ""):
+            expected_course = require_question_course(course_id)["id"]
+            if paper.to_dict().get("course_id") != expected_course:
+                return JSONResponse(
+                    content={"status": "error", "message": "试卷不属于指定课程"},
+                    status_code=404,
+                )
             
         pqs = db.query(PaperQuestion).filter(PaperQuestion.paper_id == paper_id).all()
         reference_counts = {}
@@ -8714,7 +9355,10 @@ def _prepare_paper_export_questions(questions_input, db: Session) -> list[dict]:
     questions_db = db.query(Question).filter(
         Question.id.in_(seen_question_ids)
     ).all()
-    question_map = {question.id: question.to_dict(get_active_version_code()) for question in questions_db}
+    question_map = {
+        question.id: question.to_dict(question_serialization_curriculum(question))
+        for question in questions_db
+    }
     refs_by_id = reference_payloads(db, questions_db)
     if seen_question_ids - set(question_map):
         raise PaperExportValidationError("试卷中包含已删除或不存在的题目。")
@@ -8744,6 +9388,38 @@ def _prepare_paper_export_questions(questions_input, db: Session) -> list[dict]:
     return questions_data
 
 
+def _validate_export_paper_structure(payload, questions_data):
+    """Reject cross-course and template-invalid exports before compilation."""
+
+    questions = [item.get("question") or {} for item in questions_data]
+    course_ids = {
+        (question.get("course_id") or "cn_hs_math") for question in questions
+    }
+    if len(course_ids) != 1:
+        raise PaperExportValidationError("一份试卷不能混合不同课程或学科的题目。")
+    derived_course_id = next(iter(course_ids))
+    requested_course_id = payload.get("course_id")
+    if requested_course_id not in (None, "") and requested_course_id != derived_course_id:
+        raise PaperExportValidationError("试卷课程与所选题目不一致。")
+    course = require_question_course(derived_course_id)
+    curriculum_id = resolve_course_curriculum(course, payload.get("curriculum_id"))
+    metadata = payload.get("metadata")
+    structure = validate_paper_structure(
+        course,
+        curriculum_id,
+        payload.get("paper_type", "exam"),
+        [
+            {
+                "question_type": question.get("question_type"),
+                "score": item.get("score", 0),
+            }
+            for question, item in zip(questions, questions_data)
+        ],
+        metadata if isinstance(metadata, dict) else {},
+    )
+    return course, curriculum_id, structure
+
+
 @app.get("/api/paper/export/preflight/{report_id}")
 def get_paper_export_preflight(report_id: str):
     """Read the bounded local audit snapshot associated with one export."""
@@ -8764,9 +9440,10 @@ def export_paper_tex(payload: dict, db: Session = Depends(get_db)):
         show_notice = payload.get("show_notice", True)
         questions_input = payload.get("questions", [])
         questions_data = _prepare_paper_export_questions(questions_input, db)
+        _export_course, _export_curriculum, _export_structure = _validate_export_paper_structure(payload, questions_data)
                 
-        tex_main = build_latex_document(title, subtitle, paper_type, questions_data, include_answers=False, show_secret=show_secret, show_notice=show_notice, question_types=METADATA_CACHE.get("question_types", []), section_order=payload.get("section_order"))
-        tex_ans = build_latex_document(title + " (参考答案与解析)", subtitle, paper_type, questions_data, include_answers=True, show_secret=show_secret, show_notice=show_notice, question_types=METADATA_CACHE.get("question_types", []), section_order=payload.get("section_order"))
+        tex_main = build_latex_document(title, subtitle, paper_type, questions_data, include_answers=False, show_secret=show_secret, show_notice=show_notice, question_types=METADATA_CACHE.get("question_types", []), section_order=payload.get("section_order"), subject="数学" if _export_course["subject"] == "math" else "物理")
+        tex_ans = build_latex_document(title + " (参考答案与解析)", subtitle, paper_type, questions_data, include_answers=True, show_secret=show_secret, show_notice=show_notice, question_types=METADATA_CACHE.get("question_types", []), section_order=payload.get("section_order"), subject="数学" if _export_course["subject"] == "math" else "物理")
         
         if paper_type == "exam_19":
             tex_answer_sheet = build_answer_sheet_latex(title, subtitle, questions_data)
@@ -8785,9 +9462,11 @@ def export_paper_tex(payload: dict, db: Session = Depends(get_db)):
             "X-Export-Preflight-ID": preflight["id"],
             "Content-Disposition": f"attachment; filename=\"paper_export.zip\"; filename*=utf-8''{encoded_filename}"
         })
+    except HTTPException:
+        raise
     except ExportPreflightError as e:
         return JSONResponse(content={"status": "error", "message": str(e), "preflight": e.report}, status_code=400)
-    except PaperExportValidationError as e:
+    except (PaperExportValidationError, PaperStructureError) as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=400)
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": f"生成 LaTeX 源码失败: {str(e)}"}, status_code=500)
@@ -8803,9 +9482,10 @@ def export_paper_bundle(payload: dict, db: Session = Depends(get_db)):
         show_notice = payload.get("show_notice", True)
         questions_input = payload.get("questions", [])
         questions_data = _prepare_paper_export_questions(questions_input, db)
+        _export_course, _export_curriculum, _export_structure = _validate_export_paper_structure(payload, questions_data)
                 
-        tex_main = build_latex_document(title, subtitle, paper_type, questions_data, include_answers=False, show_secret=show_secret, show_notice=show_notice, question_types=METADATA_CACHE.get("question_types", []), section_order=payload.get("section_order"))
-        tex_ans = build_latex_document(title + " (参考答案与解析)", subtitle, paper_type, questions_data, include_answers=True, show_secret=show_secret, show_notice=show_notice, question_types=METADATA_CACHE.get("question_types", []), section_order=payload.get("section_order"))
+        tex_main = build_latex_document(title, subtitle, paper_type, questions_data, include_answers=False, show_secret=show_secret, show_notice=show_notice, question_types=METADATA_CACHE.get("question_types", []), section_order=payload.get("section_order"), subject="数学" if _export_course["subject"] == "math" else "物理")
+        tex_ans = build_latex_document(title + " (参考答案与解析)", subtitle, paper_type, questions_data, include_answers=True, show_secret=show_secret, show_notice=show_notice, question_types=METADATA_CACHE.get("question_types", []), section_order=payload.get("section_order"), subject="数学" if _export_course["subject"] == "math" else "物理")
         
         if paper_type == "exam_19":
             tex_answer_sheet = build_answer_sheet_latex(title, subtitle, questions_data)
@@ -8850,9 +9530,11 @@ def export_paper_bundle(payload: dict, db: Session = Depends(get_db)):
             "X-Export-Preflight-ID": preflight["id"],
             "Content-Disposition": f"attachment; filename=\"paper_bundle.zip\"; filename*=utf-8''{encoded_filename}"
         })
+    except HTTPException:
+        raise
     except ExportPreflightError as e:
         return JSONResponse(content={"status": "error", "message": str(e), "preflight": e.report}, status_code=400)
-    except PaperExportValidationError as e:
+    except (PaperExportValidationError, PaperStructureError) as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=400)
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": f"生成全套合并包失败: {str(e)}"}, status_code=500)
@@ -8921,11 +9603,12 @@ def export_paper_pdf(payload: dict, db: Session = Depends(get_db)):
         show_notice = payload.get("show_notice", True)
         questions_input = payload.get("questions", [])
         questions_data = _prepare_paper_export_questions(questions_input, db)
+        _export_course, _export_curriculum, _export_structure = _validate_export_paper_structure(payload, questions_data)
                 
         if target == "sheet":
             tex_content = build_answer_sheet_latex(title, subtitle, questions_data)
         else:
-            tex_content = build_latex_document(title, subtitle, paper_type, questions_data, include_answers=include_answers, show_secret=show_secret, show_notice=show_notice, question_types=METADATA_CACHE.get("question_types", []), section_order=payload.get("section_order"))
+            tex_content = build_latex_document(title, subtitle, paper_type, questions_data, include_answers=include_answers, show_secret=show_secret, show_notice=show_notice, question_types=METADATA_CACHE.get("question_types", []), section_order=payload.get("section_order"), subject="数学" if _export_course["subject"] == "math" else "物理")
 
         preflight, image_paths = preflight_paper_export(questions_data,
             {"answer_sheet" if target == "sheet" else "paper": tex_content},
@@ -8950,9 +9633,11 @@ def export_paper_pdf(payload: dict, db: Session = Depends(get_db)):
                 },
                 status_code=400,
             )
+    except HTTPException:
+        raise
     except ExportPreflightError as e:
         return JSONResponse(content={"status": "error", "message": str(e), "preflight": e.report}, status_code=400)
-    except PaperExportValidationError as e:
+    except (PaperExportValidationError, PaperStructureError) as e:
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=400)
     except Exception as e:
         return JSONResponse(content={"status": "error", "message": f"编译 PDF 异常: {str(e)}"}, status_code=500)
@@ -9002,6 +9687,7 @@ def export_paper_word(payload: dict, db: Session = Depends(get_db)):
         as_single_docx = bool(payload.get("as_single_docx", False))
         include_answers = bool(payload.get("include_answers", False))
         questions_data = _prepare_paper_export_questions(questions_input, db)
+        _export_course, _export_curriculum, _export_structure = _validate_export_paper_structure(payload, questions_data)
 
         from urllib.parse import quote
         safe_title = re.sub(r'[/\\?%*:|"<>]', "_", title.strip()) or "试卷"
@@ -9018,6 +9704,7 @@ def export_paper_word(payload: dict, db: Session = Depends(get_db)):
                 uploads_dir=UPLOAD_DIR,
                 question_types=METADATA_CACHE.get("question_types", []),
                 section_order=payload.get("section_order"),
+            subject="数学" if _export_course["subject"] == "math" else "物理",
             )
             suffix = "_含答案与解析" if include_answers else ""
             filename = f"{safe_title}{suffix}.docx"
@@ -9047,6 +9734,7 @@ def export_paper_word(payload: dict, db: Session = Depends(get_db)):
             uploads_dir=UPLOAD_DIR,
             question_types=METADATA_CACHE.get("question_types", []),
             section_order=payload.get("section_order"),
+            subject="数学" if _export_course["subject"] == "math" else "物理",
         )
         ans_docx, ans_diag = build_word_document(
             title,
@@ -9059,6 +9747,7 @@ def export_paper_word(payload: dict, db: Session = Depends(get_db)):
             uploads_dir=UPLOAD_DIR,
             question_types=METADATA_CACHE.get("question_types", []),
             section_order=payload.get("section_order"),
+            subject="数学" if _export_course["subject"] == "math" else "物理",
         )
 
         zip_bytes = create_word_bundle_zip(title, main_docx, ans_docx)
@@ -9076,7 +9765,9 @@ def export_paper_word(payload: dict, db: Session = Depends(get_db)):
                 "X-Word-Answer-Card-Omitted": "1" if main_diag.get("answer_card_omitted") else "0",
             },
         )
-    except PaperExportValidationError as e:
+    except HTTPException:
+        raise
+    except (PaperExportValidationError, PaperStructureError) as e:
         return JSONResponse(
             content={"status": "error", "message": str(e)}, status_code=400
         )

@@ -143,7 +143,9 @@ def test_bootstrap_preflight_runs_without_application_or_database_imports(tmp_pa
 
 @pytest.mark.parametrize("ready,repo,expected", [
     (True, launcher.REPOSITORY, True), (False, launcher.REPOSITORY, False),
-    (True, "other/app", False),
+    # A modern service is identified by project/server IDs, not its optional
+    # release repository; a fork may configure a different repo or none.
+    (True, "other/app", True), (True, "", True),
 ])
 def test_existing_service_requires_usable_mathbank_page(monkeypatch, ready, repo, expected):
     identity = {"project_instance_id": launcher.project_instance_id(launcher.ACTIVE_ROOT),

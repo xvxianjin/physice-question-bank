@@ -1,0 +1,1960 @@
+{
+  "schema_version": 1,
+  "name": "M3 engineering sample: 30 math + 40 domestic physics + 25 AP mechanics + 25 AP E&M",
+  "counts": {
+    "cn_hs_math": 30,
+    "cn_hs_physics": 40,
+    "ap_physics_c_mechanics": 25,
+    "ap_physics_c_em": 25
+  },
+  "entries": [
+    {
+      "sample_id": "cn_hs_math-001",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "1. 集合与常用逻辑用语",
+      "knowledge": "1.1 集合的概念",
+      "question_type": "single_choice",
+      "content": "数学工程样本 第 1 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 1 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-002",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "1. 集合与常用逻辑用语",
+      "knowledge": "1.2 集合间的基本关系",
+      "question_type": "multi_choice",
+      "content": "数学工程样本 第 2 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 2 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-003",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "1. 集合与常用逻辑用语",
+      "knowledge": "1.3 集合的基本运算",
+      "question_type": "fill_in_blank",
+      "content": "数学工程样本 第 3 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 3 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-004",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "1. 集合与常用逻辑用语",
+      "knowledge": "1.4 充分条件与必要条件",
+      "question_type": "detailed_answer",
+      "content": "数学工程样本 第 4 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 4 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-005",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "1. 集合与常用逻辑用语",
+      "knowledge": "1.5 全称量词与存在量词",
+      "question_type": "single_choice",
+      "content": "数学工程样本 第 5 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 5 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-006",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "2. 一元二次函数、方程和不等式",
+      "knowledge": "2.1 等式性质与不等式性质",
+      "question_type": "multi_choice",
+      "content": "数学工程样本 第 6 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 6 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-007",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "2. 一元二次函数、方程和不等式",
+      "knowledge": "2.2 基本不等式",
+      "question_type": "fill_in_blank",
+      "content": "数学工程样本 第 7 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 7 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-008",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "2. 一元二次函数、方程和不等式",
+      "knowledge": "2.3 二次函数与一元二次方程、不等式",
+      "question_type": "detailed_answer",
+      "content": "数学工程样本 第 8 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 8 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-009",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "3. 函数的概念与性质",
+      "knowledge": "3.1 函数的概念及其表示",
+      "question_type": "single_choice",
+      "content": "数学工程样本 第 9 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 9 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-010",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "3. 函数的概念与性质",
+      "knowledge": "3.2 函数的基本性质",
+      "question_type": "multi_choice",
+      "content": "数学工程样本 第 10 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 10 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-011",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "3. 函数的概念与性质",
+      "knowledge": "3.3 幂函数",
+      "question_type": "fill_in_blank",
+      "content": "数学工程样本 第 11 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 11 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-012",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "3. 函数的概念与性质",
+      "knowledge": "3.4 函数的应用(一)",
+      "question_type": "detailed_answer",
+      "content": "数学工程样本 第 12 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 12 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-013",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "4. 指数函数与对数函数",
+      "knowledge": "4.1 指数",
+      "question_type": "single_choice",
+      "content": "数学工程样本 第 13 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 13 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-014",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "4. 指数函数与对数函数",
+      "knowledge": "4.2 指数函数",
+      "question_type": "multi_choice",
+      "content": "数学工程样本 第 14 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 14 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-015",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "4. 指数函数与对数函数",
+      "knowledge": "4.3 对数",
+      "question_type": "fill_in_blank",
+      "content": "数学工程样本 第 15 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 15 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "units",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-016",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "4. 指数函数与对数函数",
+      "knowledge": "4.4 对数函数",
+      "question_type": "detailed_answer",
+      "content": "数学工程样本 第 16 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 16 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-017",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "4. 指数函数与对数函数",
+      "knowledge": "4.5 函数的应用(二)",
+      "question_type": "single_choice",
+      "content": "数学工程样本 第 17 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 17 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-018",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "5. 三角函数",
+      "knowledge": "5.1 任意角和弧度制",
+      "question_type": "multi_choice",
+      "content": "数学工程样本 第 18 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 18 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-019",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "5. 三角函数",
+      "knowledge": "5.2 三角函数的概念",
+      "question_type": "fill_in_blank",
+      "content": "数学工程样本 第 19 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 19 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-020",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "5. 三角函数",
+      "knowledge": "5.3 诱导公式",
+      "question_type": "detailed_answer",
+      "content": "数学工程样本 第 20 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 20 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-021",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "5. 三角函数",
+      "knowledge": "5.4 三角函数的图象与性质",
+      "question_type": "single_choice",
+      "content": "数学工程样本 第 21 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 21 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-022",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "5. 三角函数",
+      "knowledge": "5.5 三角恒等变换",
+      "question_type": "multi_choice",
+      "content": "数学工程样本 第 22 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 22 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-023",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "5. 三角函数",
+      "knowledge": "5.6 函数y=Asin(wx+φ)",
+      "question_type": "fill_in_blank",
+      "content": "数学工程样本 第 23 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 23 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-024",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修一",
+      "chapter": "5. 三角函数",
+      "knowledge": "5.7 三角函数的应用",
+      "question_type": "detailed_answer",
+      "content": "数学工程样本 第 24 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 24 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-025",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修二",
+      "chapter": "6. 平面向量及其应用",
+      "knowledge": "6.1 平面向量的概念",
+      "question_type": "single_choice",
+      "content": "数学工程样本 第 25 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 25 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-026",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修二",
+      "chapter": "6. 平面向量及其应用",
+      "knowledge": "6.2 平面向量的运算",
+      "question_type": "multi_choice",
+      "content": "数学工程样本 第 26 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 26 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-027",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修二",
+      "chapter": "6. 平面向量及其应用",
+      "knowledge": "6.3 平面向量基本定理及坐标表示",
+      "question_type": "fill_in_blank",
+      "content": "数学工程样本 第 27 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 27 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-028",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修二",
+      "chapter": "6. 平面向量及其应用",
+      "knowledge": "6.4 平面向量的应用",
+      "question_type": "detailed_answer",
+      "content": "数学工程样本 第 28 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 28 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-029",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修二",
+      "chapter": "7. 复数",
+      "knowledge": "7.1 复数的概念",
+      "question_type": "single_choice",
+      "content": "数学工程样本 第 29 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 29 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_math-030",
+      "course_id": "cn_hs_math",
+      "curriculum_id": "A",
+      "compulsory": "必修二",
+      "chapter": "7. 复数",
+      "knowledge": "7.2 复数的四则运算",
+      "question_type": "multi_choice",
+      "content": "数学工程样本 第 30 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 30 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_math",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-031",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "运动的描述",
+      "knowledge": "质点 参考系",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 31 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 31 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-032",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "运动的描述",
+      "knowledge": "时间 位移",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 32 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 32 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-033",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "运动的描述",
+      "knowledge": "位置变化快慢的描述——速度",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 33 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 33 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-034",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "运动的描述",
+      "knowledge": "速度变化快慢的描述——加速度",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 34 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 34 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-035",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "匀变速直线运动的研究",
+      "knowledge": "实验：探究小车速度随时间变化的规律",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 35 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 35 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-036",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "匀变速直线运动的研究",
+      "knowledge": "匀变速直线运动的速度与时间的关系",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 36 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 36 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-037",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "匀变速直线运动的研究",
+      "knowledge": "匀变速直线运动的位移与时间的关系",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 37 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 37 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-038",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "匀变速直线运动的研究",
+      "knowledge": "自由落体运动",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 38 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 38 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-039",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "相互作用——力",
+      "knowledge": "重力与弹力",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 39 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 39 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-040",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "相互作用——力",
+      "knowledge": "摩擦力",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 40 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 40 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-041",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "相互作用——力",
+      "knowledge": "牛顿第三定律",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 41 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 41 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-042",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "相互作用——力",
+      "knowledge": "力的合成和分解",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 42 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 42 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-043",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "相互作用——力",
+      "knowledge": "共点力的平衡",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 43 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 43 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-044",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "运动和力的关系",
+      "knowledge": "牛顿第一定律",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 44 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 44 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-045",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "运动和力的关系",
+      "knowledge": "实验：探究加速度与力、质量的关系",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 45 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 45 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "units",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-046",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "运动和力的关系",
+      "knowledge": "牛顿第二定律",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 46 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 46 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-047",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "运动和力的关系",
+      "knowledge": "力学单位制",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 47 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 47 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-048",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "运动和力的关系",
+      "knowledge": "牛顿运动定律的应用",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 48 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 48 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-049",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第一册",
+      "chapter": "运动和力的关系",
+      "knowledge": "超重和失重",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 49 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 49 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-050",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "抛体运动",
+      "knowledge": "曲线运动",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 50 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 50 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-051",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "抛体运动",
+      "knowledge": "运动的合成与分解",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 51 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 51 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-052",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "抛体运动",
+      "knowledge": "实验：探究平抛运动的特点",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 52 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 52 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-053",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "抛体运动",
+      "knowledge": "抛体运动的规律",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 53 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 53 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-054",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "圆周运动",
+      "knowledge": "圆周运动",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 54 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 54 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-055",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "圆周运动",
+      "knowledge": "向心力",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 55 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 55 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-056",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "圆周运动",
+      "knowledge": "向心加速度",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 56 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 56 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-057",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "圆周运动",
+      "knowledge": "生活中的圆周运动",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 57 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 57 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-058",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "万有引力与宇宙航行",
+      "knowledge": "行星的运动",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 58 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 58 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-059",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "万有引力与宇宙航行",
+      "knowledge": "万有引力定律",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 59 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 59 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-060",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "万有引力与宇宙航行",
+      "knowledge": "万有引力理论的成就",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 60 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 60 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-061",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "万有引力与宇宙航行",
+      "knowledge": "宇宙航行",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 61 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 61 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-062",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "万有引力与宇宙航行",
+      "knowledge": "相对论时空观与牛顿力学的局限性",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 62 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 62 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-063",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "机械能守恒定律",
+      "knowledge": "功与功率",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 63 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 63 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-064",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "机械能守恒定律",
+      "knowledge": "重力势能",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 64 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 64 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-065",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "机械能守恒定律",
+      "knowledge": "动能和动能定理",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 65 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 65 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-066",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "机械能守恒定律",
+      "knowledge": "机械能守恒定律",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 66 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 66 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-067",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第二册",
+      "chapter": "机械能守恒定律",
+      "knowledge": "实验：验证机械能守恒定律",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 67 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 67 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-068",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第三册",
+      "chapter": "静电场及其应用",
+      "knowledge": "电荷",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 68 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 68 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-069",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第三册",
+      "chapter": "静电场及其应用",
+      "knowledge": "库仑定律",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 69 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 69 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "cn_hs_physics-070",
+      "course_id": "cn_hs_physics",
+      "curriculum_id": "cn_physics_renjiao_2019",
+      "compulsory": "必修第三册",
+      "chapter": "静电场及其应用",
+      "knowledge": "电场 电场强度",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 70 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 70 题答案为 3 m/s。",
+      "source": "工程样本 cn_hs_physics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-071",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Kinematics",
+      "chapter": "Scalars and Vectors",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 71 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 71 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-072",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Kinematics",
+      "chapter": "Displacement, Velocity, and Acceleration",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 72 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 72 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-073",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Kinematics",
+      "chapter": "Representing Motion",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 73 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 73 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-074",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Kinematics",
+      "chapter": "Reference Frames and Relative Motion",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 74 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 74 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-075",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Kinematics",
+      "chapter": "Motion in Two or Three Dimensions",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 75 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 75 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "units",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-076",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Force and Translational Dynamics",
+      "chapter": "Systems and Center of Mass",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 76 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 76 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-077",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Force and Translational Dynamics",
+      "chapter": "Forces and Free-Body Diagrams",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 77 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 77 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-078",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Force and Translational Dynamics",
+      "chapter": "Newton’s Third Law",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 78 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 78 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-079",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Force and Translational Dynamics",
+      "chapter": "Newton’s First Law",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 79 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 79 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-080",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Force and Translational Dynamics",
+      "chapter": "Newton’s Second Law",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 80 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 80 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-081",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Force and Translational Dynamics",
+      "chapter": "Gravitational Force",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 81 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 81 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-082",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Force and Translational Dynamics",
+      "chapter": "Kinetic and Static Friction",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 82 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 82 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-083",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Force and Translational Dynamics",
+      "chapter": "Spring Forces",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 83 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 83 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-084",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Force and Translational Dynamics",
+      "chapter": "Resistive Forces",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 84 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 84 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-085",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Force and Translational Dynamics",
+      "chapter": "Circular Motion",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 85 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 85 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-086",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Work, Energy, and Power",
+      "chapter": "Translational Kinetic Energy",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 86 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 86 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-087",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Work, Energy, and Power",
+      "chapter": "Work",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 87 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 87 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-088",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Work, Energy, and Power",
+      "chapter": "Potential Energy",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 88 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 88 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-089",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Work, Energy, and Power",
+      "chapter": "Conservation of Energy",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 89 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 89 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-090",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Work, Energy, and Power",
+      "chapter": "Power",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 90 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 90 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-091",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Linear Momentum",
+      "chapter": "Linear Momentum",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 91 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 91 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-092",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Linear Momentum",
+      "chapter": "Change in Momentum and Impulse",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 92 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 92 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-093",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Linear Momentum",
+      "chapter": "Conservation of Linear Momentum",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 93 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 93 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-094",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Linear Momentum",
+      "chapter": "Elastic and Inelastic Collisions",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 94 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 94 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_mechanics-095",
+      "course_id": "ap_physics_c_mechanics",
+      "curriculum_id": "ap_c_mechanics",
+      "compulsory": "Torque and Rotational Dynamics",
+      "chapter": "Rotational Kinematics",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 95 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 95 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_mechanics",
+      "coverage": [
+        "formula",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-096",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Charges, Fields, and Gauss’s Law",
+      "chapter": "Electric Charge and Electric Force",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 96 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 96 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-097",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Charges, Fields, and Gauss’s Law",
+      "chapter": "Conservation of Electric Charge and the Process of Charging",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 97 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 97 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-098",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Charges, Fields, and Gauss’s Law",
+      "chapter": "Electric Fields",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 98 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 98 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-099",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Charges, Fields, and Gauss’s Law",
+      "chapter": "Electric Fields of Charge Distributions",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 99 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 99 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-100",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Charges, Fields, and Gauss’s Law",
+      "chapter": "Electric Flux",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 100 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 100 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-101",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Charges, Fields, and Gauss’s Law",
+      "chapter": "Gauss’s Law",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 101 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 101 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-102",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Potential",
+      "chapter": "Electric Potential Energy",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 102 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 102 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-103",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Potential",
+      "chapter": "Electric Potential",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 103 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 103 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-104",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Potential",
+      "chapter": "Conservation of Electric Energy",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 104 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 104 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-105",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Conductors and Capacitors",
+      "chapter": "Electrostatics with Conductors",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 105 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 105 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "units",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-106",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Conductors and Capacitors",
+      "chapter": "Redistribution of Charge Between Conductors",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 106 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 106 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-107",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Conductors and Capacitors",
+      "chapter": "Capacitors",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 107 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 107 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-108",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Conductors and Capacitors",
+      "chapter": "Dielectrics",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 108 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 108 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-109",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Circuits",
+      "chapter": "Electric Current",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 109 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 109 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-110",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Circuits",
+      "chapter": "Simple Circuits",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 110 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 110 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-111",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Circuits",
+      "chapter": "Resistance, Resistivity, and Ohm’s Law",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 111 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 111 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-112",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Circuits",
+      "chapter": "Electric Power",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 112 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 112 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-113",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Circuits",
+      "chapter": "Compound Direct Current Circuits",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 113 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 113 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-114",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Circuits",
+      "chapter": "Kirchhoff’s Loop Rule",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 114 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 114 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-115",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Circuits",
+      "chapter": "Kirchhoff’s Junction Rule",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 115 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 115 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "table",
+        "figure"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-116",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Electric Circuits",
+      "chapter": "Resistor-Capacitor (RC) Circuits",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 116 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 116 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-117",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Magnetic Fields and Electromagnetism",
+      "chapter": "Magnetic Fields",
+      "knowledge": "",
+      "question_type": "multi_choice",
+      "content": "物理工程样本 第 117 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 117 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "units"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-118",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Magnetic Fields and Electromagnetism",
+      "chapter": "Magnetism and Moving Charges",
+      "knowledge": "",
+      "question_type": "fill_in_blank",
+      "content": "物理工程样本 第 118 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 118 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-119",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Magnetic Fields and Electromagnetism",
+      "chapter": "Magnetic Fields of Current-Carrying Wires and the Biot-Savart Law",
+      "knowledge": "",
+      "question_type": "detailed_answer",
+      "content": "物理工程样本 第 119 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 119 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula"
+      ]
+    },
+    {
+      "sample_id": "ap_physics_c_em-120",
+      "course_id": "ap_physics_c_em",
+      "curriculum_id": "ap_c_em",
+      "compulsory": "Magnetic Fields and Electromagnetism",
+      "chapter": "Ampère’s Law",
+      "knowledge": "",
+      "question_type": "single_choice",
+      "content": "物理工程样本 第 120 题：已知物理量取值满足 \\(v=\\frac{s}{t}\\)。 结果保留两位有效数字并注明单位。\n\n（1）写出已知量与未知量；\n（2）求目标量并说明方向。\n\n| 物理量 | 数值 | 单位 |\n| --- | --- | --- |\n| 时间 | 2.0 | s |\n| 位移 | 6.0 | m |\n\n![示意图](/static/uploads/sample/sample-figure.png)\n\nA. 1 m/s\nB. 2 m/s\nC. 3 m/s\nD. 4 m/s",
+      "answer_markdown": "由 \\(v=s/t\\) 计算，第 120 题答案为 3 m/s。",
+      "source": "工程样本 ap_physics_c_em",
+      "coverage": [
+        "formula",
+        "subquestions",
+        "units",
+        "table",
+        "figure"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "curriculum_id": "ap_c_mechanics",
+  "course_id": "ap_physics_c_mechanics",
+  "title": "AP Physics C: Mechanics (2027 CED)",
+  "verification": "official",
+  "source": {
+    "publisher": "College Board",
+    "document": "AP Physics C: Mechanics Course and Exam Description",
+    "url": "https://apcentral.collegeboard.org/media/pdf/ap-physics-c-mechanics-course-and-exam-description.pdf",
+    "version": "Course Framework V.1, 2027 exam",
+    "verified_on": "2026-11-21"
+  },
+  "structure": "units",
+  "units": [
+    {
+      "id": "unit_1_kinematics",
+      "number": 1,
+      "title": "Kinematics",
+      "weight": "10–15%",
+      "topics": [
+        {"id": "1.1", "title": "Scalars and Vectors"},
+        {"id": "1.2", "title": "Displacement, Velocity, and Acceleration"},
+        {"id": "1.3", "title": "Representing Motion"},
+        {"id": "1.4", "title": "Reference Frames and Relative Motion"},
+        {"id": "1.5", "title": "Motion in Two or Three Dimensions"}
+      ]
+    },
+    {
+      "id": "unit_2_force_translational_dynamics",
+      "number": 2,
+      "title": "Force and Translational Dynamics",
+      "weight": "20–25%",
+      "topics": [
+        {"id": "2.1", "title": "Systems and Center of Mass"},
+        {"id": "2.2", "title": "Forces and Free-Body Diagrams"},
+        {"id": "2.3", "title": "Newton’s Third Law"},
+        {"id": "2.4", "title": "Newton’s First Law"},
+        {"id": "2.5", "title": "Newton’s Second Law"},
+        {"id": "2.6", "title": "Gravitational Force"},
+        {"id": "2.7", "title": "Kinetic and Static Friction"},
+        {"id": "2.8", "title": "Spring Forces"},
+        {"id": "2.9", "title": "Resistive Forces"},
+        {"id": "2.10", "title": "Circular Motion"}
+      ]
+    },
+    {
+      "id": "unit_3_work_energy_power",
+      "number": 3,
+      "title": "Work, Energy, and Power",
+      "weight": "15–25%",
+      "topics": [
+        {"id": "3.1", "title": "Translational Kinetic Energy"},
+        {"id": "3.2", "title": "Work"},
+        {"id": "3.3", "title": "Potential Energy"},
+        {"id": "3.4", "title": "Conservation of Energy"},
+        {"id": "3.5", "title": "Power"}
+      ]
+    },
+    {
+      "id": "unit_4_linear_momentum",
+      "number": 4,
+      "title": "Linear Momentum",
+      "weight": "10–20%",
+      "topics": [
+        {"id": "4.1", "title": "Linear Momentum"},
+        {"id": "4.2", "title": "Change in Momentum and Impulse"},
+        {"id": "4.3", "title": "Conservation of Linear Momentum"},
+        {"id": "4.4", "title": "Elastic and Inelastic Collisions"}
+      ]
+    },
+    {
+      "id": "unit_5_torque_rotational_dynamics",
+      "number": 5,
+      "title": "Torque and Rotational Dynamics",
+      "weight": "10–15%",
+      "topics": [
+        {"id": "5.1", "title": "Rotational Kinematics"},
+        {"id": "5.2", "title": "Connecting Linear and Rotational Motion"},
+        {"id": "5.3", "title": "Torque"},
+        {"id": "5.4", "title": "Rotational Inertia"},
+        {"id": "5.5", "title": "Rotational Equilibrium and Newton’s First Law in Rotational Form"},
+        {"id": "5.6", "title": "Newton’s Second Law in Rotational Form"}
+      ]
+    },
+    {
+      "id": "unit_6_energy_momentum_rotating_systems",
+      "number": 6,
+      "title": "Energy and Momentum of Rotating Systems",
+      "weight": "10–15%",
+      "topics": [
+        {"id": "6.1", "title": "Rotational Kinetic Energy"},
+        {"id": "6.2", "title": "Torque and Work"},
+        {"id": "6.3", "title": "Angular Momentum and Angular Impulse"},
+        {"id": "6.4", "title": "Conservation of Angular Momentum"},
+        {"id": "6.5", "title": "Rolling"},
+        {"id": "6.6", "title": "Motion of Orbiting Satellites"}
+      ]
+    },
+    {
+      "id": "unit_7_oscillations",
+      "number": 7,
+      "title": "Oscillations",
+      "weight": "10–15%",
+      "topics": [
+        {"id": "7.1", "title": "Defining Simple Harmonic Motion (SHM)"},
+        {"id": "7.2", "title": "Frequency and Period of SHM"},
+        {"id": "7.3", "title": "Representing and Analyzing SHM"},
+        {"id": "7.4", "title": "Energy of Simple Harmonic Oscillators"},
+        {"id": "7.5", "title": "Simple and Physical Pendulums"}
+      ]
+    }
+  ],
+  "books": [],
+  "exam": {
+    "year": 2027,
+    "multiple_choice": 42,
+    "multiple_choice_minutes": 85,
+    "free_response": 4,
+    "free_response_minutes": 95,
+    "calculator_allowed": true,
+    "science_practices": [
+      {
+        "id": 1,
+        "title": "Creating Representations",
+        "description": "Create representations that depict physical phenomena.",
+        "skills": [
+          {"id": "1.A", "title": "Create diagrams, tables, charts, or schematics to represent physical situations."},
+          {"id": "1.B", "title": "Create quantitative graphs with appropriate scales and units, including plotting data."},
+          {"id": "1.C", "title": "Create qualitative sketches of graphs that represent features of a model or the behavior of a physical system."}
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Mathematical Routines",
+        "description": "Conduct analyses to derive, calculate, estimate, or predict.",
+        "skills": [
+          {"id": "2.A", "title": "Derive a symbolic expression from known quantities by selecting and following a logical mathematical pathway."},
+          {"id": "2.B", "title": "Calculate or estimate an unknown quantity with units from known quantities, by selecting and following a logical computational pathway."},
+          {"id": "2.C", "title": "Compare physical quantities between two or more scenarios or at different times and locations in a single scenario."},
+          {"id": "2.D", "title": "Predict new values or factors of change of physical quantities using functional dependence between variables."}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Scientific Questioning and Argumentation",
+        "description": "Describe experimental procedures, analyze data, and support claims.",
+        "skills": [
+          {"id": "3.A", "title": "Create experimental procedures that are appropriate for a given scientific question."},
+          {"id": "3.B", "title": "Apply an appropriate law, definition, theoretical relationship, or model to make a claim."},
+          {"id": "3.C", "title": "Justify or support a claim using evidence from experimental data, physical representations, or physical principles or laws."}
+        ]
+      }
+    ],
+    "free_response_types": [
+      {"id": 1, "title": "Mathematical Routines"},
+      {"id": 2, "title": "Translation Between Representations"},
+      {"id": 3, "title": "Experimental Design and Analysis"},
+      {"id": 4, "title": "Qualitative/Quantitative Translation"}
+    ]
+  }
+}

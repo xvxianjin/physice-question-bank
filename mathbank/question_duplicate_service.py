@@ -381,6 +381,7 @@ def recall_question_ids(
     fingerprint: QuestionFingerprint,
     *,
     exclude_id: int | None = None,
+    course_id: str | None = None,
     limit: int = MAX_RECALL_CANDIDATES,
     diagnostics: dict[str, object] | None = None,
 ) -> list[int]:
@@ -392,6 +393,10 @@ def recall_question_ids(
         StoredFingerprint.fingerprint_version == FINGERPRINT_VERSION,
         StoredFingerprint.exact_hash == fingerprint.exact_hash,
     )
+    if course_id is not None:
+        exact_query = exact_query.join(
+            Question, Question.id == StoredFingerprint.question_id
+        ).filter(Question.course_id == course_id)
     if exclude_id is not None:
         exact_query = exact_query.filter(
             StoredFingerprint.question_id != int(exclude_id)
@@ -421,6 +426,10 @@ def recall_question_ids(
         ]
         if exclude_id is not None:
             conditions.append(StoredFingerprint.question_id != int(exclude_id))
+        if course_id is not None:
+            conditions.append(StoredFingerprint.question_id.in_(
+                select(Question.id).where(Question.course_id == course_id)
+            ))
         bounded_band = (
             select(
                 StoredFingerprint.question_id.label("question_id"),
@@ -485,6 +494,7 @@ def recall_text_fragment_question_ids(
     *,
     exclude_id: int | None = None,
     exclude_ids: Iterable[int] = (),
+    course_id: str | None = None,
     limit: int = MAX_RECALL_CANDIDATES,
     diagnostics: dict[str, object] | None = None,
 ) -> list[int]:
@@ -507,6 +517,10 @@ def recall_text_fragment_question_ids(
         ]
         if excluded:
             conditions.append(StoredFingerprint.question_id.notin_(excluded))
+        if course_id is not None:
+            conditions.append(StoredFingerprint.question_id.in_(
+                select(Question.id).where(Question.course_id == course_id)
+            ))
         bounded_band = (
             select(
                 StoredFingerprint.question_id.label("question_id"),
@@ -604,6 +618,7 @@ def find_indexed_candidates(
     uploads_dir: str | Path,
     url_prefix: str,
     exclude_id: int | None = None,
+    course_id: str | None = None,
     limit: int = 5,
     fingerprint_cache: dict[int, QuestionFingerprint] | None = None,
     diagnostics: dict[str, object] | None = None,
@@ -620,6 +635,7 @@ def find_indexed_candidates(
         db,
         fingerprint,
         exclude_id=exclude_id,
+        course_id=course_id,
         limit=primary_budget,
         diagnostics=primary_diagnostics,
     )
@@ -656,6 +672,7 @@ def find_indexed_candidates(
         fingerprint,
         exclude_id=exclude_id,
         exclude_ids=primary_ids,
+        course_id=course_id,
         limit=remaining_budget,
         diagnostics=text_diagnostics,
     )

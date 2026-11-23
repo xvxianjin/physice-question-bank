@@ -79,6 +79,61 @@ def test_shutdown_accepts_current_instance_and_schedules_daemon_thread(client):
     raise_signal.assert_called_once_with(signal.SIGINT)
 
 
+def test_ocr_figure_review_wires_review_without_reocr(client, monkeypatch, tmp_path):
+    import main
+    from PIL import Image
+
+    source = tmp_path / "ocr_source.png"
+    Image.new("RGB", (40, 30), "white").save(source)
+    monkeypatch.setattr(main, "resolve_upload_asset", lambda *args, **kwargs: source)
+    monkeypatch.setattr(main, "resolve_ocr_provider", lambda engine: SimpleNamespace(
+        api_key="test-key", credential_label="测试供应商", provider_code="test",
+        model_name="test-model",
+    ))
+    seen = {}
+
+    def fake_review(recognized, image_path, provider, **kwargs):
+        seen["source"] = str(image_path)
+        seen["illustrations"] = recognized["illustrations"]
+        reviewed = dict(recognized)
+        reviewed["_verified_crops"] = {}
+        reviewed["illustration_review"] = {"verified": 1, "total": 1}
+        return reviewed
+
+    def fake_materialize(recognized, image, **kwargs):
+        seen["skip_tikz"] = kwargs.get("skip_tikz")
+        return {
+            "markdown": "题干![](/static/uploads/crop.png)后文",
+            "illustrations": [{"slot": "图1", "status": "cropped"}],
+            "tikz_assets": [], "image_layouts": {}, "warnings": [],
+        }
+
+    monkeypatch.setattr(main, "review_single_ocr_figures", fake_review)
+    monkeypatch.setattr(main, "materialize_ocr_illustrations", fake_materialize)
+    headers = {"X-Local-Token": LOCAL_TOKEN}
+    response = client.post("/api/ocr/figures/review", headers=headers, json={
+        "image_path": "/static/uploads/ocr_source.png",
+        "markdown": "题干[插图待补: 图1]后文",
+        "figures": [{"slot": "图1", "bbox": {
+            "left": 10, "top": 10, "right": 100, "bottom": 100}}],
+        "engine": "default",
+    })
+    assert response.status_code == 200
+    assert response.json()["latex"].endswith("后文")
+    assert response.json()["illustration_review"]["verified"] == 1
+    assert seen["skip_tikz"] is True
+    assert seen["illustrations"][0]["status"] == "pending"
+
+    monkeypatch.undo()
+    traversal = client.post("/api/ocr/figures/review", headers=headers, json={
+        "image_path": "/static/uploads/../../etc/passwd",
+        "markdown": "题干[插图待补: 图1]",
+        "figures": [{"slot": "图1", "bbox": {
+            "left": 10, "top": 10, "right": 100, "bottom": 100}}],
+    })
+    assert traversal.status_code == 400
+
+
 def test_api_settings_get(client):
     # GET settings should always be allowed (does not require token)
     response = client.get("/api/settings")
@@ -815,6 +870,49 @@ def test_paper_export_routes_reject_incomplete_question_lists_before_building(
     word_builder.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "endpoint",
+    (
+        "/api/paper/export/tex",
+        "/api/paper/export/bundle",
+        "/api/paper/export/pdf",
+        "/api/paper/export/word",
+    ),
+)
+def test_paper_export_routes_preserve_course_validation_status(
+    client, db_session, endpoint
+):
+    from fastapi import HTTPException
+
+    question = Question(content="课程校验导出题", question_type="detailed_answer")
+    db_session.add(question)
+    db_session.commit()
+    headers = {"X-Local-Token": LOCAL_TOKEN}
+
+    with (
+        patch(
+            "main.require_question_course",
+            side_effect=HTTPException(status_code=409, detail="课程目录尚未开放"),
+        ),
+        patch(
+            "main.build_latex_document",
+            side_effect=AssertionError("course validation failure reached builder"),
+        ),
+        patch(
+            "main.build_word_document",
+            side_effect=AssertionError("course validation failure reached builder"),
+        ),
+    ):
+        response = client.post(
+            endpoint,
+            json={"title": "课程校验", "questions": [{"id": question.id}]},
+            headers=headers,
+        )
+
+    assert response.status_code == 409, (endpoint, response.text)
+    assert response.json()["detail"] == "课程目录尚未开放"
+
+
 def test_question_persists_editable_tikz_assets_and_original_reference(client):
     headers = {"X-Local-Token": LOCAL_TOKEN}
     tiny_png = base64.b64decode(
@@ -921,9 +1019,10 @@ def test_question_persists_editable_tikz_assets_and_original_reference(client):
     assert "tikz_reference_image_path" not in summary
 
 
-def test_version_and_update_check_api(client):
+def test_version_and_update_check_api(client, monkeypatch):
     from unittest.mock import patch, MagicMock
     from main import parse_version_tuple
+    monkeypatch.setenv("MATHBANK_UPDATE_REPO", "example/physics-bank")
     
     # 1. Test version tuple parser
     assert parse_version_tuple("v2.0.1") == (2, 0, 1)
@@ -936,7 +1035,9 @@ def test_version_and_update_check_api(client):
     assert res_ver.status_code == 200
     data_ver = res_ver.json()
     assert "current_version" in data_ver
-    assert data_ver["repo"] == "JudgePeach/math-question-bank"
+    assert data_ver["repo"] == "example/physics-bank"
+    assert data_ver["upstream_repo"] == "JudgePeach/math-question-bank"
+    assert data_ver["update_enabled"] is True
     assert data_ver["server_instance_id"] == SERVER_INSTANCE_ID
 
     # 3. Test GET /api/version/check-update with mocked GitHub response
@@ -946,7 +1047,7 @@ def test_version_and_update_check_api(client):
         "tag_name": "v9.9.9",
         "name": "Release 9.9.9",
         "body": "Mocked changelog",
-        "html_url": "https://github.com/JudgePeach/math-question-bank/releases/tag/v9.9.9",
+        "html_url": "https://github.com/example/physics-bank/releases/tag/v9.9.9",
         "published_at": "2026-08-09T00:00:00Z",
         "assets": [
             {
@@ -964,7 +1065,7 @@ def test_version_and_update_check_api(client):
         ]
     }
     
-    with patch("mathbank.ai_http.requests.get", return_value=mock_resp):
+    with patch("mathbank.ai_http.requests.get", return_value=mock_resp) as request:
         res_update = client.get("/api/version/check-update")
         assert res_update.status_code == 200
         data_update = res_update.json()
@@ -974,6 +1075,38 @@ def test_version_and_update_check_api(client):
         assert "macOS" in data_update["assets"]
         assert "Windows" in data_update["assets"]
         assert data_update["assets"]["macOS"]["size_mb"] == 10.0
+        assert request.call_args.args[0] == "https://api.github.com/repos/example/physics-bank/releases/latest"
+
+
+@pytest.mark.parametrize("configured", [None, "", "https://invalid.example/private?token=secret"])
+def test_unconfigured_fork_update_never_calls_network(client, monkeypatch, configured):
+    if configured is None:
+        monkeypatch.delenv("MATHBANK_UPDATE_REPO", raising=False)
+    else:
+        monkeypatch.setenv("MATHBANK_UPDATE_REPO", configured)
+    with patch("mathbank.ai_http.robust_request_get") as request:
+        version = client.get("/api/version").json()
+        response = client.get("/api/version/check-update").json()
+    request.assert_not_called()
+    assert version["repo"] == ""
+    assert version["update_enabled"] is False
+    assert response["update_enabled"] is False
+    assert response["has_update"] is False
+    assert response["release_url"] == ""
+    assert response["assets"] == {}
+    assert "secret" not in json.dumps(response)
+
+
+def test_course_discovery_is_registered_without_switching_math(client):
+    before = client.get("/api/config/metadata").json()
+    catalog = client.get("/api/courses").json()
+    assert len(catalog["courses"]) == 4
+    result = client.post("/api/courses/resolve", headers={"X-Local-Token": LOCAL_TOKEN}, json={
+        "subject": "physics", "course_id": "cn_hs_physics",
+        "curriculum_id": "cn_physics_core", "revision": catalog["revision"],
+    })
+    assert result.status_code == 400
+    assert client.get("/api/config/metadata").json() == before
 
 
 def test_solve_without_model_uses_saved_solver_and_shared_prompt(client):
@@ -987,6 +1120,44 @@ def test_solve_without_model_uses_saved_solver_and_shared_prompt(client):
         assert payload["model"] == "deepseek-chat"
         system, user = build_ai_solve_prompts("fill_in_blank", "求 1+1")
         assert payload["messages"] == [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def test_solve_with_physics_course_uses_physics_prompt(client):
+    with (
+        patch.dict(os.environ, {
+            "PREFER_SOLVE_MODEL": "DEEPSEEK/deepseek-chat",
+            "DEEPSEEK_API_KEY": "fake",
+        }),
+        patch("main.post_chat_completion") as post,
+    ):
+        post.return_value.json.return_value = {
+            "choices": [{"message": {"content": "answer"}}]
+        }
+        response = client.post(
+            "/api/ai/solve",
+            data={
+                "content": "物体从高度 $h$ 自由下落",
+                "question_type": "detailed_answer",
+                "course_id": "cn_hs_physics",
+                "curriculum_id": "cn_physics_renjiao_2019",
+            },
+            headers={"X-Local-Token": LOCAL_TOKEN},
+        )
+        assert response.status_code == 200
+        system_prompt = post.call_args.args[1]["messages"][0]["content"]
+        assert "资深高中物理教研专家" in system_prompt
+        assert "高中数学题目" not in system_prompt
+        assert "单位、有效数字和矢量方向" in system_prompt
+
+        unknown = client.post(
+            "/api/ai/solve",
+            data={
+                "content": "未知课程",
+                "course_id": "unknown_course",
+            },
+            headers={"X-Local-Token": LOCAL_TOKEN},
+        )
+        assert unknown.status_code == 400
 
 
 def test_deepseek_ocr_settings_persist_and_support_older_clients(client, tmp_path, monkeypatch):

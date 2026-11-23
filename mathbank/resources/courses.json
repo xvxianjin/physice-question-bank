@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "courses": [
+    {
+      "id": "cn_hs_math",
+      "subject": "math",
+      "name": "国内高中数学",
+      "curriculum_provider": "legacy_math",
+      "status": "available",
+      "curriculums": []
+    },
+    {
+      "id": "cn_hs_physics",
+      "subject": "physics",
+      "name": "国内高中物理",
+      "curriculum_provider": "bundled_physics",
+      "status": "available",
+      "curriculums": [
+        {
+          "id": "cn_physics_core",
+          "name": "省份组（考试方案待核验，教材统一人教版 2019）",
+          "verification": "pending"
+        },
+        {
+          "id": "cn_physics_renjiao_2019",
+          "name": "人教版（2019）高中物理六册",
+          "verification": "official",
+          "resource": "physics/cn_physics_renjiao_2019.json"
+        }
+      ]
+    },
+    {
+      "id": "ap_physics_c_mechanics",
+      "subject": "physics",
+      "name": "AP Physics C: Mechanics",
+      "curriculum_provider": "bundled_physics",
+      "status": "available",
+      "curriculums": [
+        {
+          "id": "ap_c_mechanics",
+          "name": "AP C 力学课程框架（2027 CED）",
+          "verification": "official",
+          "resource": "physics/ap_c_mechanics.json"
+        }
+      ]
+    },
+    {
+      "id": "ap_physics_c_em",
+      "subject": "physics",
+      "name": "AP Physics C: Electricity and Magnetism",
+      "curriculum_provider": "bundled_physics",
+      "status": "available",
+      "curriculums": [
+        {
+          "id": "ap_c_em",
+          "name": "AP C 电磁学课程框架（2027 CED）",
+          "verification": "official",
+          "resource": "physics/ap_c_em.json"
+        }
+      ]
+    }
+  ]
+}

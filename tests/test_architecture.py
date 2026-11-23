@@ -231,6 +231,7 @@ def test_server_holds_restore_runtime_lock_before_database_initialization():
 
 def test_lifespan_owns_post_startup_maintenance(monkeypatch):
     import main
+    from types import SimpleNamespace
 
     calls = []
 
@@ -250,7 +251,9 @@ def test_lifespan_owns_post_startup_maintenance(monkeypatch):
 
     monkeypatch.setattr(main, "IS_TESTING", False)
     monkeypatch.setattr(main, "DOCUMENT_TASKS", FakeTasks())
-    monkeypatch.setattr(main.threading, "Thread", FakeThread)
+    # Replace only main's namespace: asyncio also uses the real threading
+    # module to close workers left by earlier API tests.
+    monkeypatch.setattr(main, "threading", SimpleNamespace(Thread=FakeThread))
 
     async def exercise_lifespan():
         async with main.app_lifespan(main.app):

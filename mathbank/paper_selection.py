@@ -211,9 +211,12 @@ def parse_gaokao_source(source, current_year=None):
             "year": year, "number": number}
 
 
-def _reference_profiles(db):
+def _reference_profiles(db, course_id=None):
     # Only compact scalar metadata is scanned, with a defensive upper bound.
-    rows = (db.query(Question.id, Question.source, Question.question_type, Question.difficulty)
+    query = db.query(Question.id, Question.source, Question.question_type, Question.difficulty)
+    if course_id is not None:
+        query = query.filter(Question.course_id == course_id)
+    rows = (query
             .filter(Question.source.like("20%"), Question.source.contains("卷"), func.length(Question.source) <= 100)
             .order_by(Question.source.desc(), Question.id.desc()).limit(MAX_REFERENCE_ROWS).all())
     groups = {}
@@ -281,16 +284,16 @@ def _public_profile(item):
     return {key: item[key] for key in keys}
 
 
-def list_reference_exams(db):
-    return [_public_profile(item) for item in _reference_profiles(db)]
+def list_reference_exams(db, course_id=None):
+    return [_public_profile(item) for item in _reference_profiles(db, course_id)]
 
 
-def build_reference_context(db, reference_key=None):
+def build_reference_context(db, reference_key=None, course_id=None):
     if reference_key == "none":
         return {"enabled": False, "reference_key": "none", "references": [], "warnings": []}
     if reference_key is not None and (not isinstance(reference_key, str) or len(reference_key) > 100):
         raise ValueError("参考卷标识无效。")
-    profiles = _reference_profiles(db)
+    profiles = _reference_profiles(db, course_id)
     if reference_key not in {None, "", "auto"}:
         selected = next((item for item in profiles if item["key"] == reference_key), None)
         if selected is None:

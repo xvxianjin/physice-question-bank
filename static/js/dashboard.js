@@ -151,8 +151,12 @@
         activityContainer.setAttribute('aria-busy', 'true');
         try {
             const [statsResponse, papersResponse] = await Promise.all([
-                fetch('/api/stats'),
-                fetch('/api/papers')
+                fetch(window.MathBankCourse
+                    ? window.MathBankCourse.withQuery('/api/stats')
+                    : '/api/stats'),
+                fetch(window.MathBankCourse
+                    ? window.MathBankCourse.withQuery('/api/papers')
+                    : '/api/papers')
             ]);
             if (!statsResponse.ok || !papersResponse.ok) {
                 throw new Error('后台统计接口暂时不可用');

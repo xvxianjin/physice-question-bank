@@ -75,6 +75,36 @@ def test_ai_and_manual_selection_share_keyword_rules(client, db_session, monkeyp
     assert select(client, prompt='选1道题', search_rules={'unexpected': 'object'}).status_code == 400
 
 
+def test_physics_selection_uses_course_prompt_and_disables_math_standards(
+    client, db_session, monkeypatch
+):
+    question = add(
+        db_session,
+        "质量为 $m$ 的物体在水平面上运动",
+        course_id="cn_hs_physics",
+        subject="physics",
+    )
+    calls = mock_model(monkeypatch, [question.id])
+    response = select(
+        client,
+        prompt="选1道力学题",
+        course_id="cn_hs_physics",
+        curriculum_id="cn_physics_renjiao_2019",
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert [item["id"] for item in payload["data"]] == [question.id]
+    assert payload["standard_context"]["enabled"] is False
+    assert "数学课标" in payload["standard_context"]["warnings"][0]
+
+    system_prompt = calls[0][0]["messages"][0]["content"]
+    user_content = calls[0][0]["messages"][1]["content"]
+    assert "国内高中物理教研组的选题助手" in system_prompt
+    assert "不得引用数学知识点、数学课标" in system_prompt
+    assert '"enabled": false' in user_content
+
+
 def test_old_matching_question_is_retrieved_before_latest_35(client, db_session):
     target = add(db_session, '函数目标题')
     for index in range(45):

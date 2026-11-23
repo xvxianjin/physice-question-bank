@@ -360,7 +360,7 @@ class DocumentProjectService:
                 raise ProjectConflict("工程尚未完成首次识图，无法只分析本地工作稿。")
         return state
 
-    def migrate_tasks(self, curriculum):
+    def migrate_tasks(self, curriculum, curriculum_for=None):
         """Adopt existing local PDF checkpoints without starting any network call."""
         if not self.source_reader:
             return 0
@@ -370,9 +370,15 @@ class DocumentProjectService:
         count = 0
         for task_id, task in snapshots:
             try:
+                task_curriculum = curriculum_for(task) if curriculum_for else curriculum
+                if not isinstance(task_curriculum, dict) or not task_curriculum:
+                    continue
                 source = task.get("document_input") or {}
                 content = self.source_reader(task_id, task)
-                metadata = self.store.create(content, source["filename"], source["options"], curriculum, task_id)
+                metadata = self.store.create(
+                    content, source["filename"], source["options"],
+                    task_curriculum, task_id,
+                )
                 task.update(project_id=metadata["project_id"], task_id=task_id)
                 self.store.sync_task(metadata["project_id"], task)
                 if task.get("data"):

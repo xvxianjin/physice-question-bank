@@ -334,3 +334,92 @@ for(const reviewStatus of ['unverified','unavailable','verified']){
  expect(!save.disabled,'real user drag did not enable manual crop');
 }
 ''')
+
+
+def test_unavailable_review_shows_reason_and_retry_reuses_source_boxes():
+    _run_js(r'''
+runContentOcr({type:'image/png'});
+reply(requests[0],{status:'success',latex:'题干[插图待补: 图1]后文',image_path:'/static/uploads/source.png',
+ illustrations:[{slot:'图1',placeholder:'[插图待补: 图1]',status:'unresolved',
+  bbox:{left:10,top:10,right:300,bottom:400},review:{status:'unavailable',failure_code:'timeout'}}],
+ tikz_assets:[],image_layouts:{},warnings:[]});
+await settle();
+const labels=document.getElementById('contentOcrFigures').children.flatMap(child=>child.children).map(child=>child.textContent);
+expect(labels.some(label=>label.includes('核对超时')),'visual review failure reason was not shown');
+const retry=button('contentOcrFigures','重新核对');
+expect(retry,'retry button missing');
+retry.onclick();
+await settle();
+const request=requests[1];
+expect(request && request.url==='/api/ocr/figures/review','retry did not call the review endpoint');
+const body=JSON.parse(request.options.body);
+expect(body.image_path==='/static/uploads/source.png','source image was not reused');
+expect(body.markdown.includes('[插图待补: 图1]'),'current editor text was not sent');
+expect(body.figures.length===1 && body.figures[0].bbox.left===10,'source box was not reused');
+reply(request,{status:'success',latex:'题干![](/static/uploads/crop.png)后文',
+ illustrations:[{slot:'图1',placeholder:'[插图待补: 图1]',status:'cropped',
+  image_path:'/static/uploads/crop.png',bbox:{left:10,top:10,right:300,bottom:400},
+  review:{status:'verified'}}],
+ tikz_assets:[],image_layouts:{'/static/uploads/crop.png':{align:'left',size:'small'}},
+ warnings:[],illustration_review:{verified:1}});
+await settle();
+expect(document.getElementById('editContent').value.includes('/static/uploads/crop.png'),'verified crop was not inserted');
+expect(toasts.some(value=>String(value).includes('补入 1 幅图')),'success count was not reported');
+''')
+
+
+def test_pending_review_code_is_explained():
+    _run_js(r'''
+runContentOcr({type:'image/png'});
+reply(requests[0],{status:'success',latex:'题干[插图待补: 图1]后文',image_path:'/static/uploads/source.png',
+ illustrations:[{slot:'图1',placeholder:'[插图待补: 图1]',status:'unresolved',
+  bbox:{left:10,top:10,right:300,bottom:400},
+  review:{status:'unverified',failure_code:'correction_pending'}}],
+ tikz_assets:[],image_layouts:{},warnings:[]});
+await settle();
+const labels=document.getElementById('contentOcrFigures').children.flatMap(child=>child.children).map(child=>child.textContent);
+expect(labels.some(label=>label.includes('修正裁图待复核')),'correction pending reason was not shown');
+expect(button('contentOcrFigures','重新核对'),'retry button missing for pending review');
+''')
+
+
+def test_unknown_review_code_falls_back_to_readable_label():
+    _run_js(r'''
+runContentOcr({type:'image/png'});
+reply(requests[0],{status:'success',latex:'题干[插图待补: 图1]后文',image_path:'/static/uploads/source.png',
+ illustrations:[{slot:'图1',placeholder:'[插图待补: 图1]',status:'unresolved',
+  bbox:{left:10,top:10,right:300,bottom:400},
+  review:{status:'unverified',failure_code:'future_code',evidence:'technical detail'}}],
+ tikz_assets:[],image_layouts:{},warnings:[]});
+await settle();
+const labels=document.getElementById('contentOcrFigures').children.flatMap(child=>child.children).map(child=>child.textContent);
+expect(labels.some(label=>label.includes('核对未通过（future_code）')),'unknown review code was not shown');
+''')
+
+
+def test_transport_failure_codes_are_explained_without_raw_http_codes():
+    _run_js(r'''
+runContentOcr({type:'image/png'});
+reply(requests[0],{status:'success',latex:'题干[插图待补: 图1]后文',image_path:'/static/uploads/source.png',
+ illustrations:[{slot:'图1',placeholder:'[插图待补: 图1]',status:'unresolved',
+  bbox:{left:10,top:10,right:300,bottom:400},review:{status:'unavailable',failure_code:'http_5xx'}}],
+ tikz_assets:[],image_layouts:{},warnings:[]});
+await settle();
+const labels=document.getElementById('contentOcrFigures').children.flatMap(child=>child.children).map(child=>child.textContent);
+expect(labels.some(label=>label.includes('核对服务暂时不可用（5xx）')),'http 5xx reason was not shown');
+expect(!labels.some(label=>label.includes('http_5xx')),'raw http code leaked into the label');
+''')
+
+
+def test_failed_visual_checks_name_the_missing_part():
+    _run_js(r'''
+runContentOcr({type:'image/png'});
+reply(requests[0],{status:'success',latex:'题干[插图待补: 图1]后文',image_path:'/static/uploads/source.png',
+ illustrations:[{slot:'图1',placeholder:'[插图待补: 图1]',status:'unresolved',
+  bbox:{left:10,top:10,right:300,bottom:400},
+  review:{status:'unverified',failure_code:'checks_failed',failed_checks:['labels_complete']}}],
+ tikz_assets:[],image_layouts:{},warnings:[]});
+await settle();
+const labels=document.getElementById('contentOcrFigures').children.flatMap(child=>child.children).map(child=>child.textContent);
+expect(labels.some(label=>label.includes('标注或刻度不完整')),'failed check detail was not shown');
+''')

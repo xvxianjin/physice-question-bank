@@ -190,6 +190,8 @@ def test_existing_bundle_api_uses_catalog_aware_packager_without_duplicate_files
     namespace = {"Session": object, "Depends": lambda _: None, "get_db": lambda: None,
                  "_prepare_paper_export_questions": lambda data, db: [{"question": deepcopy(QUESTION), "score": 5}],
                  "build_latex_document": paper.build_latex_document, "build_answer_sheet_latex": lambda *args: "sheet",
+                     "_validate_export_paper_structure": lambda payload, questions: (
+                         {"subject": "math"}, "A", {"kind": "math", "paper_type": "exam_19"}),
                  "preflight_paper_export": export_preflight.preflight_paper_export,
                  "ExportPreflightError": export_preflight.ExportPreflightError,
                  "UPLOAD_DIR": "unused", "UPLOAD_DIR_REL": "unused",

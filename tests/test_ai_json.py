@@ -9,6 +9,7 @@ from mathbank.prompts import (
     build_ai_solve_prompts,
     build_classification_system_prompt,
     build_import_parse_system_prompt,
+    build_paper_selection_prompts,
     build_pdf_parse_system_prompt,
 )
 
@@ -38,6 +39,44 @@ def test_formula_producing_prompts_share_context_aware_fraction_rule():
         assert r"$\dfrac{1+\frac{1}{x}}{2}$" in prompt
         assert r"原文显式 `\tfrac`/`\cfrac` 保留" in prompt
         assert "锁定公式及其 ID 优先原样保留，不受本规则改写" in prompt
+
+
+def test_physics_solve_prompt_uses_physics_rules_and_keeps_format_rules():
+    system_prompt, user_prompt = build_ai_solve_prompts(
+        "detailed_answer",
+        "质量为 $m$ 的物体从高度 $h$ 自由下落",
+        subject="physics",
+        course_name="AP Physics C: Mechanics",
+    )
+    assert "资深高中物理教研专家" in system_prompt
+    assert "AP Physics C: Mechanics" in system_prompt
+    assert "高中数学题目" not in system_prompt
+    assert "导数及其应用" not in system_prompt
+    assert "单位、有效数字和矢量方向" in system_prompt
+    assert "核心概念与规律" in system_prompt
+    assert "核心知识点" not in system_prompt
+    assert "【分式】" in system_prompt
+    assert user_prompt.endswith("质量为 $m$ 的物体从高度 $h$ 自由下落")
+
+
+def test_physics_paper_selection_prompt_rejects_math_standards():
+    system_prompt, _user = build_paper_selection_prompts(
+        "选 3 道力学题",
+        3,
+        [],
+        False,
+        reference_context={"enabled": False},
+        selection_plan={"type_counts": {}},
+        standard_context={"enabled": False},
+        subject="physics",
+        course_name="国内高中物理",
+    )
+    assert "国内高中物理教研组的选题助手" in system_prompt
+    assert "不得引用数学知识点、数学课标" in system_prompt
+    assert "standard_context.enabled=false" in system_prompt
+    assert "普通高考以必修与选择性必修为范围" not in system_prompt
+    assert "standards_alignment 必须为空数组" in system_prompt
+    assert '"standards_alignment": []' in system_prompt
 
 
 def test_parse_ai_json_type_hints_resolve():
@@ -186,6 +225,28 @@ def test_import_prompts_return_single_leaf_or_whole_chapter_pending():
         assert '"category_knowledge"' in prompt
         assert "2.1 概念" in prompt
         assert "空字符串" in prompt and "不得猜测" in prompt
+
+
+def test_physics_import_prompts_use_course_tree_and_2027_exam_contract():
+    tree = {"Kinematics": {"Scalars and Vectors": []}}
+    exam = {
+        "year": 2027,
+        "multiple_choice": 42,
+        "multiple_choice_minutes": 85,
+        "free_response": 4,
+        "free_response_minutes": 95,
+    }
+    for prompt in (
+        build_pdf_parse_system_prompt(tree, False, [], subject="physics", exam=exam),
+        build_import_parse_system_prompt(tree, "markdown", subject="physics", exam=exam),
+        build_import_parse_system_prompt(tree, "tex", subject="physics", exam=exam),
+    ):
+        assert "Kinematics" in prompt
+        assert "Scalars and Vectors" in prompt
+        assert "2027" in prompt
+        assert "42" in prompt and "85" in prompt
+        assert "4" in prompt and "95" in prompt
+        assert "knowledge_points` 必须始终为空数组" in prompt
 
 
 def test_updated_prompts_cover_symbol_safety_and_default_difficulty_rules():
