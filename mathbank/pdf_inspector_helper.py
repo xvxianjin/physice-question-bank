@@ -76,6 +76,15 @@ _NATIVE_HTML_TAG = re.compile(
     r"</?(?:a|b|br|code|div|em|i|img|p|span|strong|sub|sup|table|tbody|td|th|thead|tr|u)"
     r"(?:\s+[^<>]*?)?\s*/?>", re.IGNORECASE,
 )
+_CROSS_COLUMN_FURNITURE = re.compile(
+    r"(?:unauthorized\s+copying|go\s+on\s+to\s+the\s+next\s+page|"
+    r"do\s+not\s+(?:turn|open)|section\s+[ivx]+|"
+    r"time\s*[—–-]|questions?\s+\d+\s*[-–]\s*\d+|"
+    r"^\s*[-–—]?\s*\d{1,3}\s*[-–—]?\s*$)", re.IGNORECASE,
+)
+_CROSS_COLUMN_HEADING = re.compile(
+    r"^\s*\d{1,3}[.．、](?!\d)\s*(?=[\u3400-\u9fffA-Za-z\\])"
+)
 
 
 def _native_diagnostic_text(markdown: str, *, preserve_content_boundaries: bool = False) -> str:
@@ -384,9 +393,290 @@ def _native_layout_loss_reasons(markdown: str) -> list[str]:
     return list(dict.fromkeys(reasons))
 
 
-def _requires_full_page_vision(markdown: str) -> bool:
+def _fusion_probe(value: str) -> str:
+    """Compare visible prose without Markdown punctuation or whitespace."""
+    value = _NATIVE_HTML_TAG.sub("", str(value or ""))
+    value = re.sub(r"[*_`$]", "", value)
+    return re.sub(r"[^0-9A-Za-z\u3400-\u9fff\u0370-\u03ff]+", "", value)
+
+
+def _native_physical_text_lines(page) -> list[dict]:
+    """Return bounded horizontal text lines from the original PDF page."""
+    if page is None or getattr(page, "rotation", 0):
+        return []
+    try:
+        data = page.get_text("dict")
+    except (AttributeError, TypeError, ValueError, RuntimeError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    lines = []
+    characters = 0
+    for block in data.get("blocks", []):
+        if block.get("type", 0) != 0:
+            continue
+        for line in block.get("lines", []):
+            direction = line.get("dir", (1, 0))
+            if (not isinstance(direction, (list, tuple)) or len(direction) != 2
+                    or any(not isinstance(value, (int, float)) or not math.isfinite(value)
+                           for value in direction)
+                    or abs(direction[0] - 1) > .01 or abs(direction[1]) > .01):
+                continue
+            box = line.get("bbox")
+            if (not isinstance(box, (list, tuple)) or len(box) != 4
+                    or any(not isinstance(value, (int, float)) or not math.isfinite(value)
+                           for value in box)
+                    or box[2] <= box[0] or box[3] <= box[1]):
+                continue
+            text = "".join(str(span.get("text", "")) for span in line.get("spans", []))
+            if not text.strip():
+                continue
+            lines.append({"text": text, "box": tuple(box), "probe": _fusion_probe(text)})
+            characters += len(text)
+            if len(lines) > 800 or characters > 60000:
+                return []
+    return lines
+
+
+def _same_physical_row(left: dict, right: dict) -> bool:
+    left_box, right_box = left["box"], right["box"]
+    overlap = min(left_box[3], right_box[3]) - max(left_box[1], right_box[1])
+    height = min(left_box[3] - left_box[1], right_box[3] - right_box[1])
+    return height > 0 and overlap >= height * .5
+
+
+def _fusion_candidate(left_text: str, right_text: str, left_box, right_box,
+                      page_width: float) -> dict | None:
+    """Build one conservative side-by-side pair, or reject uncertain evidence."""
+    if (re.match(r"^[.,;:!?。，；：！？]", left_text.strip())
+            or re.match(r"^[.,;:!?。，；：！？]", right_text.strip())):
+        return None
+    left_probe, right_probe = _fusion_probe(left_text), _fusion_probe(right_text)
+    if len(left_probe) < 8 or len(right_probe) < 8:
+        return None
+    if left_probe in right_probe or right_probe in left_probe:
+        return None
+    if (_CROSS_COLUMN_FURNITURE.search(left_text)
+            or _CROSS_COLUMN_FURNITURE.search(right_text)):
+        return None
+    gutter = (float(left_box[2]) + float(right_box[0])) / 2
+    if not .3 * page_width <= gutter <= .7 * page_width:
+        return None
+    return {
+        "left_text": left_text,
+        "right_text": right_text,
+        "left_probe": left_probe,
+        "right_probe": right_probe,
+        "left_box": tuple(left_box),
+        "right_box": tuple(right_box),
+        "heading": bool(_CROSS_COLUMN_HEADING.search(left_text)
+                        or _CROSS_COLUMN_HEADING.search(right_text)),
+    }
+
+
+def _native_real_table_boxes(page) -> list[tuple]:
+    finder = getattr(page, "find_tables", None)
+    if not callable(finder):
+        return []
+    try:
+        try:
+            found = finder(use_layout=False)
+        except TypeError as exc:
+            if "use_layout" not in str(exc):
+                raise
+            found = finder()
+        boxes = []
+        for table in getattr(found, "tables", []) or []:
+            box = getattr(table, "bbox", None)
+            if (isinstance(box, (list, tuple)) and len(box) == 4
+                    and all(isinstance(value, (int, float)) and math.isfinite(value)
+                            for value in box)
+                    and box[2] > box[0] and box[3] > box[1]):
+                boxes.append(tuple(box))
+        return boxes
+    except (AttributeError, TypeError, ValueError, RuntimeError):
+        return []
+
+
+def _box_center_in_tables(box, tables: list[tuple]) -> bool:
+    center_x, center_y = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    return any(left - 1 <= center_x <= right + 1 and top - 1 <= center_y <= bottom + 1
+               for left, top, right, bottom in tables)
+
+
+def _native_separate_line_fusion_candidates(lines: list[dict], page_width: float) -> list[dict]:
+    """Find two physically separate column lines emitted as one Markdown line."""
+    if len(lines) < 2:
+        return []
+    heights = sorted(line["box"][3] - line["box"][1] for line in lines)
+    height = heights[len(heights) // 2]
+    if not math.isfinite(height) or height <= 0:
+        return []
+    ordered = sorted(lines, key=lambda line: (line["box"][1], line["box"][0]))
+    minimum_gap = max(6.0, height * .5)
+    candidates = []
+    for index, first in enumerate(ordered):
+        for second in ordered[index + 1:]:
+            if second["box"][1] >= first["box"][3] + height:
+                break
+            left, right = (first, second) if first["box"][0] <= second["box"][0] else (second, first)
+            if left["box"][2] >= right["box"][0] - minimum_gap:
+                continue
+            if not _same_physical_row(left, right):
+                continue
+            candidate = _fusion_candidate(
+                left["text"], right["text"], left["box"], right["box"], page_width,
+            )
+            if candidate is not None:
+                candidates.append(candidate)
+            if len(candidates) > 128:
+                return []
+    return candidates
+
+
+def _native_internal_gap_fusion_candidates(page, page_width: float) -> list[dict]:
+    """Find one physical line whose characters cross a central column gutter."""
+    if page is None or getattr(page, "rotation", 0):
+        return []
+    try:
+        data = page.get_text("rawdict")
+    except (AttributeError, TypeError, ValueError, RuntimeError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    candidates = []
+    for block in data.get("blocks", []):
+        if block.get("type", 0) != 0:
+            continue
+        for line in block.get("lines", []):
+            direction = line.get("dir", (1, 0))
+            if (not isinstance(direction, (list, tuple)) or len(direction) != 2
+                    or any(not isinstance(value, (int, float)) or not math.isfinite(value)
+                           for value in direction)
+                    or abs(direction[0] - 1) > .01 or abs(direction[1]) > .01):
+                continue
+            characters = []
+            for span in line.get("spans", []):
+                for character in span.get("chars", []):
+                    value, box = character.get("c"), character.get("bbox")
+                    if (not isinstance(value, str) or not value.strip()
+                            or not isinstance(box, (list, tuple)) or len(box) != 4
+                            or any(not isinstance(item, (int, float)) or not math.isfinite(item)
+                                   for item in box)
+                            or box[2] <= box[0] or box[3] <= box[1]):
+                        continue
+                    characters.append((tuple(box), value))
+            if len(characters) < 12:
+                continue
+            characters.sort(key=lambda item: item[0][0])
+            widths = sorted(box[2] - box[0] for box, _value in characters)
+            width = widths[len(widths) // 2]
+            if not math.isfinite(width) or width <= 0:
+                continue
+            best_gap, best_index = 0.0, None
+            for index in range(len(characters) - 1):
+                gap = characters[index + 1][0][0] - characters[index][0][2]
+                if gap > best_gap:
+                    best_gap, best_index = gap, index
+            if best_index is None or best_gap < max(18.0, width * 6.0):
+                continue
+            split = best_index + 1
+            left_chars, right_chars = characters[:split], characters[split:]
+            left_text = "".join(value for _box, value in left_chars)
+            right_text = "".join(value for _box, value in right_chars)
+            left_box = (min(box[0] for box, _value in left_chars),
+                        min(box[1] for box, _value in left_chars),
+                        max(box[2] for box, _value in left_chars),
+                        max(box[3] for box, _value in left_chars))
+            right_box = (min(box[0] for box, _value in right_chars),
+                         min(box[1] for box, _value in right_chars),
+                         max(box[2] for box, _value in right_chars),
+                         max(box[3] for box, _value in right_chars))
+            candidate = _fusion_candidate(
+                left_text, right_text, left_box, right_box, page_width,
+            )
+            if candidate is not None:
+                candidates.append(candidate)
+            if len(candidates) > 64:
+                return []
+    return candidates
+
+
+def _fusion_probes_are_adjacent(markdown_probe: str, left: str, right: str) -> bool:
+    if len(left) < 8 or len(right) < 8 or left in right or right in left:
+        return False
+    left_positions = [match.start() for match in re.finditer(re.escape(left), markdown_probe)]
+    right_positions = [match.start() for match in re.finditer(re.escape(right), markdown_probe)]
+    for left_start in left_positions:
+        for right_start in right_positions:
+            if right_start >= left_start + len(left):
+                gap = right_start - (left_start + len(left))
+            elif left_start >= right_start + len(right):
+                gap = left_start - (right_start + len(right))
+            else:
+                continue
+            if gap <= 120:
+                return True
+    return False
+
+
+def _native_cross_column_fusion_reasons(markdown: str, page=None) -> list[str]:
+    """Prove line-level cross-column fusion from original PDF geometry.
+
+    A two-column page is not rejected merely for having columns. The same
+    Markdown line must contain prose from both sides of a central gutter,
+    either from two physical lines on one row or from one line with an internal
+    gap. Page furniture, short page numbers and real Markdown tables are
+    excluded. Weak prose-only evidence needs two independent pairs.
+    """
+    raw = str(markdown or "")
+    if not raw.strip() or len(raw) > 60000 or page is None or getattr(page, "rotation", 0):
+        return []
+    try:
+        page_width = float(page.rect.width)
+    except (AttributeError, TypeError, ValueError):
+        return []
+    if not math.isfinite(page_width) or page_width <= 0:
+        return []
+    lines = _native_physical_text_lines(page)
+    candidates = _native_separate_line_fusion_candidates(lines, page_width)
+    candidates.extend(_native_internal_gap_fusion_candidates(page, page_width))
+    table_boxes = _native_real_table_boxes(page)
+    if table_boxes:
+        candidates = [
+            candidate for candidate in candidates
+            if not (_box_center_in_tables(candidate["left_box"], table_boxes)
+                    or _box_center_in_tables(candidate["right_box"], table_boxes))
+        ]
+    if not candidates:
+        return []
+    diagnostic = _native_diagnostic_text(raw)
+    markdown_lines = [
+        line for line in diagnostic.splitlines()
+        if line.strip() and not line.lstrip().startswith("|")
+    ]
+    weak_pairs = set()
+    for line in markdown_lines:
+        probe = _fusion_probe(line)
+        if len(probe) < 16:
+            continue
+        for candidate in candidates:
+            if not _fusion_probes_are_adjacent(
+                    probe, candidate["left_probe"], candidate["right_probe"]):
+                continue
+            if candidate["heading"] or _CROSS_COLUMN_HEADING.search(line):
+                return ["原生提取把左右栏的同一水平行文字合并到一行，双栏阅读顺序已丢失，需整页识别。"]
+            weak_pairs.add((candidate["left_probe"], candidate["right_probe"]))
+    if len(weak_pairs) >= 2:
+        return ["原生提取把左右栏的同一水平行文字合并到一行，双栏阅读顺序已丢失，需整页识别。"]
+    return []
+
+
+def _requires_full_page_vision(markdown: str, page=None) -> bool:
     """A regional patch cannot restore cross-column reading order."""
-    return bool(_native_layout_loss_reasons(markdown) or _has_scrambled_sparse_table(markdown))
+    return bool(_native_layout_loss_reasons(markdown)
+                or _has_scrambled_sparse_table(markdown)
+                or _native_cross_column_fusion_reasons(markdown, page))
 
 
 def _formula_block_loss_reasons(page, markdown: str) -> list[str]:
@@ -885,6 +1175,7 @@ def _native_position_quality_reasons(markdown: str, page_index: int, pdf_path: s
             reasons.extend(_native_script_geometry_reasons(markdown, page))
             if has_table:
                 reasons.extend(_native_table_position_reasons(markdown, page))
+            reasons.extend(_native_cross_column_fusion_reasons(markdown, page))
             reasons.extend(_native_paint_visibility_reasons(markdown, page, evidence=paint_evidence))
             return reasons
         with fitz.open(pdf_path) as document:
@@ -1074,6 +1365,7 @@ def _extract_fitz_pages(
                 quality_reasons = native_text_quality_reasons(text)
                 quality_reasons.extend(_native_brace_geometry_reasons(text, page))
                 quality_reasons.extend(_native_script_geometry_reasons(text, page))
+                quality_reasons.extend(_native_cross_column_fusion_reasons(text, page))
                 quality_reasons.extend(_native_paint_visibility_reasons(text, page))
                 if len(text) < 30 and not quality_reasons:
                     quality_reasons.append("原生文字过少，需通过原页识别。")
@@ -1081,7 +1373,7 @@ def _extract_fitz_pages(
                     "page_index": page_index,
                     "markdown": text,
                     "needs_ocr": bool(quality_reasons),
-                    "needs_full_vision": _requires_full_page_vision(text),
+                    "needs_full_vision": _requires_full_page_vision(text, page),
                     "source": "pymupdf",
                     "quality_reasons": quality_reasons,
                 })
@@ -1165,6 +1457,7 @@ def _repair_native_pages(file_bytes: bytes, pages: List[Dict[str, Any]], *, docu
                 remaining = native_text_quality_reasons(markdown) if isinstance(markdown, str) else []
                 if isinstance(markdown, str):
                     remaining.extend(_formula_block_loss_reasons(document[index], markdown))
+                    remaining.extend(_native_cross_column_fusion_reasons(markdown, document[index]))
                     visible_reasons = _native_paint_visibility_reasons(
                         markdown, document[index], evidence=(paint_evidence or {}).get(index))
                     remaining.extend(visible_reasons)
@@ -1248,7 +1541,7 @@ def _inspect_and_extract_pdf(
                                  and 0 <= page_index < len(native_document) else None)
                 formula_loss_reasons = _formula_block_loss_reasons(physical_page, markdown)
                 quality_reasons.extend(formula_loss_reasons)
-                layout_loss = (_requires_full_page_vision(markdown)
+                layout_loss = (_requires_full_page_vision(markdown, physical_page)
                                or bool(formula_loss_reasons))
                 if physical_page is not None:
                     paint_evidence[page_index] = _native_covered_text_evidence(physical_page)

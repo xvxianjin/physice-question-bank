@@ -1,7 +1,9 @@
 """Native-text quality gates, without network, models or personal PDF fixtures."""
 
+from functools import partial
 from types import SimpleNamespace
 
+import pymupdf as fitz
 import pytest
 
 from mathbank import pdf_inspector_helper as helper
@@ -40,6 +42,110 @@ def test_interleaved_two_column_question_order_requires_full_page_vision():
     )
     reasons = helper.native_text_quality_reasons(markdown)
     assert any("题号顺序交错" in reason for reason in reasons)
+
+
+def test_fused_two_column_line_requires_full_page_vision(monkeypatch, tmp_path):
+    with fitz.open() as document:
+        page = document.new_page(width=600, height=800)
+        page.insert_text(
+            (40, 100), "4. A left question asks for the tension in the string.", fontsize=10,
+        )
+        page.insert_text(
+            (330, 100), "5. A right question asks for the acceleration of the block.", fontsize=10,
+        )
+        source = document.tobytes()
+    markdown = (
+        "4. A left question asks for the tension in the string. "
+        "5. A right question asks for the acceleration of the block."
+    )
+    api = SimpleNamespace(
+        extract_pages_markdown=lambda *_args, **_kwargs: SimpleNamespace(pages=[
+            SimpleNamespace(page=0, markdown=markdown, needs_ocr=False, ocr_reason=None)]),
+        extract_text_with_positions=lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(helper, "pdf_inspector", api)
+    monkeypatch.setattr(helper, "_PDF_INSPECTOR_AVAILABLE", True)
+    actual_temp = helper.tempfile.NamedTemporaryFile
+    monkeypatch.setattr(helper.tempfile, "NamedTemporaryFile", partial(actual_temp, dir=tmp_path))
+    result = helper.inspect_and_extract_pdf(source)
+    assert result["pages"][0]["needs_ocr"] is True
+    assert result["pages"][0]["needs_full_vision"] is True
+    assert any("同一水平行" in reason for reason in result["pages"][0]["quality_reasons"])
+    assert result["pages"][0]["markdown"] == markdown
+
+
+def test_single_physical_line_with_central_gutter_is_rejected():
+    with fitz.open() as document:
+        page = document.new_page(width=600, height=800)
+        text = (
+            "4. Left question asks for tension.                          "
+            "5. Right question asks for acceleration."
+        )
+        page.insert_text((40, 100), text, fontsize=8)
+        assert helper._native_cross_column_fusion_reasons(text, page)
+
+
+def test_single_column_fill_in_fragments_are_not_cross_column_fusion():
+    with fitz.open() as document:
+        page = document.new_page(width=600, height=800)
+        page.insert_text((94, 208), "Note Start Time here ", fontsize=10)
+        page.insert_text((251, 208), ". Note Stop Time here ", fontsize=10)
+        page.insert_text((412, 208), ". Check that students are ", fontsize=10)
+        markdown = (
+            "Note Start Time here. Note Stop Time here. Check that students are "
+            "marking their answers in pencil on their answer sheets."
+        )
+        assert helper._native_cross_column_fusion_reasons(markdown, page) == []
+
+
+def test_two_column_rows_inside_a_real_table_are_not_prose_fusion():
+    with fitz.open() as document:
+        page = document.new_page(width=600, height=800)
+        page.draw_rect(fitz.Rect(30, 80, 570, 140), width=.8)
+        page.draw_line((300, 80), (300, 140), width=.8)
+        page.draw_line((30, 110), (570, 110), width=.8)
+        page.insert_text((40, 100), "Proton mass value one", fontsize=9)
+        page.insert_text((330, 100), "Electron charge value two", fontsize=9)
+        markdown = "Proton mass value one Electron charge value two"
+        assert helper._native_cross_column_fusion_reasons(markdown, page) == []
+
+
+def test_normal_single_column_page_with_footer_stays_native(monkeypatch, tmp_path):
+    with fitz.open() as document:
+        page = document.new_page(width=600, height=800)
+        for index, (number, body) in enumerate([
+            (1, "A single column question asks for the total force."),
+            (2, "Another single column question asks for the acceleration."),
+            (3, "A third question asks for the final velocity."),
+        ]):
+            page.insert_text((40, 100 + index * 40), f"{number}. {body}", fontsize=10)
+        page.insert_text(
+            (40, 740), "Unauthorized copying or reuse of any part of this page is illegal.",
+            fontsize=8,
+        )
+        page.insert_text((400, 740), "GO ON TO THE NEXT PAGE.", fontsize=8)
+        source = document.tobytes()
+    markdown = "\n".join([
+        "1. A single column question asks for the total force.",
+        "2. Another single column question asks for the acceleration.",
+        "3. A third question asks for the final velocity.",
+        "Unauthorized copying or reuse of any part of this page is illegal. "
+        "GO ON TO THE NEXT PAGE.",
+    ])
+    api = SimpleNamespace(
+        extract_pages_markdown=lambda *_args, **_kwargs: SimpleNamespace(pages=[
+            SimpleNamespace(page=0, markdown=markdown, needs_ocr=False, ocr_reason=None)]),
+        extract_text_with_positions=lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(helper, "pdf_inspector", api)
+    monkeypatch.setattr(helper, "_PDF_INSPECTOR_AVAILABLE", True)
+    actual_temp = helper.tempfile.NamedTemporaryFile
+    monkeypatch.setattr(helper.tempfile, "NamedTemporaryFile", partial(actual_temp, dir=tmp_path))
+    result = helper.inspect_and_extract_pdf(source)
+    assert result["pages"][0]["needs_ocr"] is False
+    assert result["pages"][0]["needs_full_vision"] is False
+    assert result["pages"][0]["quality_reasons"] == []
+    assert result["pages"][0]["markdown"] == markdown
 
 
 def test_question_body_spread_over_prose_table_requires_full_page_vision():

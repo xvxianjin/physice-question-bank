@@ -345,9 +345,10 @@ PDF_AUXILIARY_TOLERANCE_SHA256 = {
 # geometry without overriding slots already inside a question region. A
 # vector-only crop that matches a native formula block is rejected before it
 # becomes a figure. The hidden-description rebind and prose-crop filter remain
-# part of this round.
+# part of this round. Native quality also rejects line-level cross-column
+# fusion before a regional repair can keep the scrambled reading order.
 # Preserve older provenance above.
-PDF_FIDELITY_MODULE_SHA256 = {'pdf_figures.py': '8c0071f1f7485ee9c17b00b46d63b3d014f16fcd7b20c7b6da36a8ad6835a336', 'pdf_inspector_helper.py': '95b6ebec9398fdb6302dae31926bc80b04bf22c607a994e1cbb2cfc710d555de'}
+PDF_FIDELITY_MODULE_SHA256 = {'pdf_figures.py': '8c0071f1f7485ee9c17b00b46d63b3d014f16fcd7b20c7b6da36a8ad6835a336', 'pdf_inspector_helper.py': 'f462846c7a908f0be1f42eb6c97e4e4990a8179600aa249de869315ea59d9ea2'}
 
 
 @pytest.mark.parametrize("filename", MODULE_HASHES)
