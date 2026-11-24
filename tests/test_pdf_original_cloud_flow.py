@@ -339,12 +339,15 @@ PDF_AUXILIARY_TOLERANCE_SHA256 = {
 }
 
 
-# Reviewed 2026-11-23: guard corrupt choice grids, refine figure crops from
-# physical source evidence and bind complete option picture slots in order.
-# The hidden-description rebind and prose-crop filter are part of this reviewed
-# figure round; the prompt additions below are reviewed in the same round.
+# Reviewed 2026-11-24: guard corrupt choice grids, refine figure crops from
+# physical source evidence, bind complete option picture slots in order, and
+# re-anchor hoisted figure slots by native numbered-question or question-group
+# geometry without overriding slots already inside a question region. A
+# vector-only crop that matches a native formula block is rejected before it
+# becomes a figure. The hidden-description rebind and prose-crop filter remain
+# part of this round.
 # Preserve older provenance above.
-PDF_FIDELITY_MODULE_SHA256 = {'pdf_figures.py': '691ad67deb531f9acf60e6024a9606b719d62ae49c7860a2147ec60bb2c14cc6', 'pdf_inspector_helper.py': '95b6ebec9398fdb6302dae31926bc80b04bf22c607a994e1cbb2cfc710d555de'}
+PDF_FIDELITY_MODULE_SHA256 = {'pdf_figures.py': '8c0071f1f7485ee9c17b00b46d63b3d014f16fcd7b20c7b6da36a8ad6835a336', 'pdf_inspector_helper.py': '95b6ebec9398fdb6302dae31926bc80b04bf22c607a994e1cbb2cfc710d555de'}
 
 
 @pytest.mark.parametrize("filename", MODULE_HASHES)

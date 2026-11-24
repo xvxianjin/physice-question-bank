@@ -182,6 +182,56 @@ def test_missing_candidates_are_not_certified_by_model_confidence(tmp_path, monk
     assert "未被解释" in result["issues"][0]["reason"]
 
 
+def test_formula_only_vector_crop_is_not_attached_as_a_figure():
+    formula = (593.8234, 439.4668, 647.5489, 464.5183)
+    info = {
+        "page_index": 21,
+        "width": 612,
+        "height": 792,
+        "candidates": [{"id": "p22_vector_014", "type": "vector", "bbox": list(formula)}],
+    }
+    result = {"page_complete": True, "figures": [{
+        "bbox": [591.3724, 437.5729, 649.9999, 466.4122],
+        "candidate_ids": ["p22_vector_014"],
+        "anchor_before": "图4",
+        "anchor_after": "",
+        "review_required": False,
+    }]}
+    notes = []
+
+    figures, warnings = pdf_figures._validate_layout(
+        result, info, notes=notes,
+        formula_boxes=[(formula, "(C) [矢量公式]")],
+    )
+
+    assert figures == []
+    assert any("公式片段" in message for message in notes)
+    assert not any("未被解释" in warning for warning in warnings)
+
+
+def test_raster_crop_containing_a_formula_is_still_a_figure():
+    formula = (593.8234, 439.4668, 647.5489, 464.5183)
+    info = {
+        "page_index": 21,
+        "width": 612,
+        "height": 792,
+        "candidates": [{"id": "p22_raster_009", "type": "raster", "bbox": list(formula)}],
+    }
+    result = {"page_complete": True, "figures": [{
+        "bbox": list(formula),
+        "candidate_ids": ["p22_raster_009"],
+        "anchor_before": "图4",
+        "anchor_after": "",
+        "review_required": False,
+    }]}
+
+    figures, _ = pdf_figures._validate_layout(
+        result, info, formula_boxes=[(formula, "(C) [矢量公式]")],
+    )
+
+    assert len(figures) == 1
+
+
 def test_half_crop_snaps_but_ignored_large_raster_and_duplicate_region_require_review():
     info = {"page_index": 0, "width": 400, "height": 500,
             "candidates": [{"id": "image1", "bbox": [100, 100, 500, 500], "type": "raster"}]}
@@ -672,6 +722,209 @@ def test_option_slot_binding_keeps_a_complete_model_mapping():
     ]}
     figures, _ = pdf_figures._validate_layout(result, info)
     assert [figure["slot_id"] for figure in figures] == ["p1-s2", "p1-s1"]
+
+
+def test_two_column_question_figures_move_to_their_own_headings():
+    source = (
+        "Note: To simplify calculations, you may use $g=10\\,\\mathrm{m/s^2}$ in all problems.\n\n"
+        "[插图待补: 图1]\n\n"
+        "[插图待补: 图2]\n\n"
+        "1. A projectile is launched with a speed of 40 m/s at an angle of 30 degrees.\n\n"
+        "2. A small sphere hangs from a string attached to the ceiling of a train car.\n"
+    )
+    slots = pdf_figures.describe_figure_slots(source, 0)
+    info = {
+        "page_index": 0,
+        "width": 603.36,
+        "height": 774,
+        "figure_slots": slots,
+        "text_blocks": [
+            {"bbox": [84.7, 351.9, 472.6, 437.2],
+             "text": "1. A projectile is launched with a speed of 40 m/s at an angle of 30 degrees."},
+            {"bbox": [542.2, 358.1, 931.8, 392.0],
+             "text": "2. A small sphere hangs from a string attached to the ceiling of a train car."},
+        ],
+    }
+    figures = [
+        {"id": "p1-f1", "bbox": [111.3, 259.7, 445.6, 335.3], "slot_id": "p1-s1",
+         "image_path": "/static/uploads/tmp/left.png"},
+        {"id": "p1-f2", "bbox": [606.0, 243.7, 865.8, 342.6], "slot_id": "p1-s2",
+         "image_path": "/static/uploads/tmp/right.png"},
+    ]
+    notes = []
+
+    revised = pdf_figures._move_figure_slots_to_question_headings(source, info, figures, notes)
+
+    assert revised.index("[插图待补: 图1]") > revised.index("1.")
+    assert revised.index("[插图待补: 图2]") > revised.index("2.")
+    assert notes and "题号" in notes[0]
+    for figure in figures:
+        slot = next(slot for slot in info["figure_slots"] if slot["id"] == figure["slot_id"])
+        figure["anchor_before"] = revised[:slot["end"]]
+        figure["anchor_after"] = ""
+    anchored = pdf_figures.apply_figure_anchors(revised, figures)
+    assert len(anchored["attached"]) == 2
+    page = pdf_figures.clear_resolved_figure_placeholders(anchored["markdown"], figures)
+    first, second = page.split("\n\n2.", 1)
+    assert "left.png" in first and "right.png" not in first
+    assert "right.png" in second and "left.png" not in second
+
+
+def test_two_column_slot_move_keeps_ambiguous_page_unchanged():
+    source = (
+        "[插图待补: 图1]\n\n[插图待补: 图2]\n\n"
+        "1. Same heading text.\n\n1. Same heading text.\n"
+    )
+    slots = pdf_figures.describe_figure_slots(source, 0)
+    info = {
+        "page_index": 0,
+        "width": 603.36,
+        "height": 774,
+        "figure_slots": slots,
+        "text_blocks": [
+            {"bbox": [84.7, 100, 472.6, 140], "text": "1. Same heading text."},
+            {"bbox": [542.2, 100, 931.8, 140], "text": "1. Same heading text."},
+        ],
+    }
+    figures = [
+        {"id": "p1-f1", "bbox": [111.3, 20, 445.6, 90], "slot_id": "p1-s1"},
+        {"id": "p1-f2", "bbox": [606.0, 20, 865.8, 90], "slot_id": "p1-s2"},
+    ]
+    notes = []
+
+    revised = pdf_figures._move_figure_slots_to_question_headings(source, info, figures, notes)
+
+    assert revised == source
+    assert not notes
+    assert info["figure_slots"] == slots
+
+
+def test_single_column_stacked_figures_move_to_their_own_question():
+    source = (
+        "[插图待补: 图1]\n\n[插图待补: 图2]\n\n"
+        "4. Two blocks hang from a pulley, as shown above.\n\n"
+        "(A) 1 N\n(B) 2 N\n\n"
+        "5. Three objects lie on the x-axis, as shown above.\n\n"
+        "(A) 1.0 m\n(B) 1.5 m\n\n"
+        "6. Which unit is equivalent to momentum?\n"
+    )
+    slots = pdf_figures.describe_figure_slots(source, 0)
+    info = {
+        "page_index": 0,
+        "figure_slots": slots,
+        "text_blocks": [
+            {"bbox": [79.6, 215.4, 471.0, 232.6],
+             "text": "4. Two blocks hang from a pulley, as shown above."},
+            {"bbox": [79.5, 605.2, 438.1, 619.5],
+             "text": "5. Three objects lie on the x-axis, as shown above."},
+            {"bbox": [537.0, 45.0, 922.2, 59.1],
+             "text": "6. Which unit is equivalent to momentum?"},
+        ],
+    }
+    figures = [
+        {"id": "f1", "bbox": [132.1, 33.2, 203.9, 153.3], "slot_id": "p1-s1"},
+        {"id": "f2", "bbox": [76.7, 425.7, 259.3, 455.0], "slot_id": "p1-s2"},
+    ]
+    notes = []
+
+    revised = pdf_figures._move_figure_slots_to_question_headings(source, info, figures, notes)
+
+    assert revised.index("图1") > revised.index("4.")
+    assert revised.index("图1") < revised.index("Two blocks")
+    assert revised.index("图2") > revised.index("5.")
+    assert revised.index("图2") < revised.index("Three objects")
+    assert notes and "题号" in notes[0]
+
+
+def test_group_shared_figure_and_right_column_figure_are_separated():
+    source = (
+        "[插图待补: 图1]\n\n[插图待补: 图3]\n\n"
+        "Questions 1-2\n\n"
+        "A ball follows the parabolic path shown in the diagram above.\n\n"
+        "1. Which graph represents the horizontal velocity?\n\n"
+        "2. Which graph represents the vertical velocity?\n\n"
+        "3. An object slides up an inclined plane, as shown above.\n"
+    )
+    slots = pdf_figures.describe_figure_slots(source, 0)
+    info = {
+        "page_index": 0,
+        "figure_slots": slots,
+        "text_blocks": [
+            {"bbox": [79.6, 188.7, 633.5, 242.5],
+             "text": "Note: use g = 10 m/s^2.  Questions 1-2"},
+            {"bbox": [79.6, 770.4, 476.8, 813.2],
+             "text": "1. Which graph represents the horizontal velocity?"},
+            {"bbox": [79.6, 838.5, 462.2, 868.5],
+             "text": "2. Which graph represents the vertical velocity?"},
+            {"bbox": [537.0, 336.2, 938.5, 353.5],
+             "text": "3. An object slides up an inclined plane, as shown above."},
+        ],
+    }
+    figures = [
+        {"id": "f1", "bbox": [180.2, 255.9, 376.7, 297.4], "slot_id": "p1-s1"},
+        {"id": "f3", "bbox": [577.8, 226.0, 894.0, 318.4], "slot_id": "p1-s2"},
+    ]
+    notes = []
+
+    revised = pdf_figures._move_figure_slots_to_question_headings(source, info, figures, notes)
+
+    assert revised.index("图1") > revised.index("Questions 1-2")
+    assert revised.index("图1") < revised.index("A ball follows")
+    assert revised.index("图3") > revised.index("3.")
+    assert revised.index("图3") < revised.index("An object slides")
+
+
+def test_group_figure_stays_when_it_is_already_below_the_group_heading():
+    source = (
+        "Questions 22-24\n\n[插图待补: 图1]\n\n"
+        "The elliptical orbit of a comet is shown above.\n\n"
+        "22. At position 2 the kinetic energy is\n\n"
+        "23. What is the ratio of the speeds?\n"
+    )
+    slots = pdf_figures.describe_figure_slots(source, 0)
+    info = {
+        "page_index": 0,
+        "figure_slots": slots,
+        "text_blocks": [
+            {"bbox": [79.5, 45.4, 208.2, 59.5], "text": "Questions 22-24"},
+            {"bbox": [79.6, 231.2, 454.9, 340.5],
+             "text": "The elliptical orbit of a comet is shown above."},
+        ],
+    }
+    figures = [
+        {"id": "f1", "bbox": [82.4, 57.9, 253.6, 165.4], "slot_id": "p1-s1"},
+    ]
+
+    revised = pdf_figures._move_figure_slots_to_question_headings(source, info, figures, [])
+
+    assert revised == source
+
+
+def test_figure_inside_its_own_question_is_not_moved_to_the_next_heading():
+    source = (
+        "4. Two blocks hang from a pulley, as shown above.\n\n"
+        "[插图待补: 图1]\n\n"
+        "(A) 1 N\n(B) 2 N\n\n"
+        "5. Three objects lie on the x-axis, as shown above.\n"
+    )
+    slots = pdf_figures.describe_figure_slots(source, 0)
+    info = {
+        "page_index": 0,
+        "figure_slots": slots,
+        "text_blocks": [
+            {"bbox": [79.6, 215.4, 471.0, 232.6],
+             "text": "4. Two blocks hang from a pulley, as shown above."},
+            {"bbox": [79.5, 605.2, 438.1, 619.5],
+             "text": "5. Three objects lie on the x-axis, as shown above."},
+        ],
+    }
+    figures = [
+        {"id": "f1", "bbox": [132.1, 425.7, 203.9, 555.3], "slot_id": "p1-s1"},
+    ]
+
+    revised = pdf_figures._move_figure_slots_to_question_headings(source, info, figures, [])
+
+    assert revised == source
 
 
 def test_hidden_figure_descriptions_correct_a_clear_slot_swap():

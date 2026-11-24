@@ -39,6 +39,14 @@ MAX_FIGURES_PER_PAGE = 32
 MAX_SOURCE_CHARS = 50000
 PDF_STRATEGIES = frozenset({"native_preferred", "force_ocr", "layout_aware"})
 _FIGURE_SLOT = re.compile(r"\[插图待补(?:\s*[:：]\s*[^\]\n]{0,80})?\]")
+_NUMBERED_HEADING = re.compile(r"^[ \t]*(\d{1,3})[.．、](?!\d)")
+_GROUP_HEADING_BLOCK = re.compile(r"Questions?\s+(\d{1,3})\s*[-–—]\s*(\d{1,3})", re.IGNORECASE)
+_ABOVE_REFERENCE = re.compile(
+    r"\b(?:shown|given|illustrated|depicted|as\s+in)\b[^\n]{0,80}\b(?:above|below)\b"
+    r"|\b(?:figure|diagram|graph)\b[^\n]{0,40}\b(?:above|below)\b"
+    r"|\b(?:above|below)\b[^\n]{0,40}\b(?:figure|diagram|graph)\b",
+    re.IGNORECASE,
+)
 
 
 def describe_figure_slots(source: str, page_index: int) -> list[dict]:
@@ -98,6 +106,232 @@ def _bind_option_slots(figures: list[dict], page_info: dict, notes: list[str]) -
     for index, slot in zip(_figure_reading_order(figures), slots):
         figures[index]["slot_id"] = slot["id"]
     notes.append("已按选项阅读顺序绑定 " + "、".join(labels) + " 的配图占位。")
+
+
+def _move_figure_slots_to_question_headings(
+    source: str, page_info: dict, figures: list[dict], notes: list[str],
+) -> str:
+    """Re-anchor figure slots that the transcription hoisted above its owner.
+
+    A VLM can serialize every figure at the top of a page, so the text slot
+    alone cannot prove which question owns an image.  Native text-block
+    geometry supplies that evidence: a figure belongs to the numbered question
+    or question group directly below it, in the same column, when the question
+    text refers to a figure above or the gap is visually adjacent.  Only the
+    slots whose current position is outside that owner's source region move.
+    Ambiguous or unproven figures stay exactly where they are.
+    """
+    slots = list(page_info.get("figure_slots") or [])
+    if not slots or not figures:
+        return source
+    slot_by_id = {}
+    for slot in slots:
+        if not isinstance(slot, dict) or not isinstance(slot.get("id"), str):
+            return source
+        if slot["id"] in slot_by_id:
+            return source
+        slot_by_id[slot["id"]] = slot
+
+    question_heads, group_heads = {}, {}
+    for block in page_info.get("text_blocks", []) or []:
+        if not isinstance(block, dict):
+            continue
+        text = str(block.get("text") or "")
+        match = _NUMBERED_HEADING.match(text)
+        bbox = block.get("bbox")
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            continue
+        if any(type(value) not in {int, float} or not math.isfinite(value) for value in bbox):
+            continue
+        geometry = tuple(float(value) for value in bbox)
+        if match:
+            number = match.group(1)
+            if number in question_heads:
+                # Repeated question numbers cannot prove a unique owner.
+                question_heads[number] = None
+            else:
+                question_heads[number] = geometry
+            continue
+        group = _GROUP_HEADING_BLOCK.search(text)
+        if group:
+            key = (group.group(1), group.group(2))
+            group_heads[key] = None if key in group_heads else geometry
+    question_heads = {key: value for key, value in question_heads.items() if value is not None}
+    group_heads = {key: value for key, value in group_heads.items() if value is not None}
+    if not question_heads and not group_heads:
+        return source
+
+    def overlap_ratio(box, other):
+        left = max(0.0, min(box[2], other[2]) - max(box[0], other[0]))
+        return left / max(1.0, min(box[2] - box[0], other[2] - other[0]))
+
+    def source_positions():
+        found = []
+        for number in question_heads:
+            matches = list(re.finditer(
+                rf"(?m)^[ \t*_]*{re.escape(number)}[.．、](?!\d)", source))
+            if len(matches) == 1:
+                found.append((matches[0].start(), "question", number))
+        for first, last in group_heads:
+            matches = list(re.finditer(
+                rf"(?m)^[ \t*_>#-]*Questions?[ \t*_]+{re.escape(first)}"
+                rf"[ \t*_]*[-–—][ \t*_]*{re.escape(last)}\b",
+                source, re.IGNORECASE))
+            if len(matches) == 1:
+                found.append((matches[0].start(), "group", (first, last)))
+        found.sort(key=lambda item: item[0])
+        return found
+
+    anchors = source_positions()
+    if not anchors:
+        return source
+    anchor_index = {ident: index for index, (_pos, kind, ident) in enumerate(anchors)}
+    anchor_end = {
+        ident: (anchors[index + 1][0] if index + 1 < len(anchors) else len(source))
+        for index, (_pos, _kind, ident) in enumerate(anchors)
+    }
+    regions = [
+        (position, anchor_end[ident])
+        for position, _kind, ident in anchors
+    ]
+
+    def owner_for(figure):
+        bbox = figure.get("bbox")
+        if (not isinstance(bbox, (list, tuple)) or len(bbox) != 4
+                or any(type(value) not in {int, float} or not math.isfinite(value) for value in bbox)):
+            return None
+        fx0, fy0, fx1, fy1 = (float(value) for value in bbox)
+        candidates = []
+        for number, head in question_heads.items():
+            if overlap_ratio((fx0, fy0, fx1, fy1), head) < 0.45:
+                continue
+            gap = head[1] - fy1
+            if -2 <= gap <= 160:
+                candidates.append((gap, "question", number))
+        for key, head in group_heads.items():
+            if overlap_ratio((fx0, fy0, fx1, fy1), head) < 0.45:
+                continue
+            gap = fy0 - head[3]
+            if -8 <= gap <= 160:
+                candidates.append((gap, "group", key))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: item[0])
+        if len(candidates) > 1 and candidates[1][0] - candidates[0][0] <= 6:
+            return None
+        gap, kind, ident = candidates[0]
+        index = anchor_index.get(ident)
+        if index is None:
+            return None
+        region = source[anchors[index][0]:anchor_end[ident]]
+        if gap > 25 and not _ABOVE_REFERENCE.search(region):
+            return None
+        return ident, anchors[index][0], anchor_end[ident]
+
+    def inside_choices(position):
+        begin = source.rfind(r"\begin{choices}", 0, position)
+        end = source.rfind(r"\end{choices}", 0, position)
+        return begin > end
+
+    def heading_target(ident):
+        for index, (position, kind, anchor_ident) in enumerate(anchors):
+            if anchor_ident != ident:
+                continue
+            if kind == "question":
+                match = re.match(r"[ \t*_]*\d{1,3}[.．、]", source[position:])
+                return position + (match.end() if match else 0)
+            line_end = source.find("\n", position)
+            return len(source) if line_end < 0 else line_end
+        return None
+
+    moves = {}
+    for figure in figures:
+        slot_id = figure.get("slot_id")
+        slot = slot_by_id.get(slot_id) if isinstance(slot_id, str) else None
+        if (slot is None
+                or not isinstance(slot.get("start"), int)
+                or not isinstance(slot.get("end"), int)
+                or not 0 <= slot["start"] < slot["end"] <= len(source)
+                or source[slot["start"]:slot["end"]] != slot.get("label")):
+            continue
+        if inside_choices(slot["start"]):
+            continue
+        if any(start <= slot["start"] < end for start, end in regions):
+            # The transcription already placed the slot inside a question or
+            # group region.  That reading order is authoritative; only slots
+            # hoisted outside every region need geometric repair.
+            continue
+        owner = owner_for(figure)
+        if owner is None:
+            continue
+        ident = owner[0]
+        target = heading_target(ident)
+        if target is None or any(slot["start"] <= target <= slot["end"] for slot in slots):
+            continue
+        moves[slot["id"]] = target
+    if not moves:
+        return source
+
+    sentinels = {}
+    insertions = {}
+    removals = {}
+    for index, slot in enumerate(slots):
+        sentinel = f"\x00MATHBANK_FIGURE_SLOT_{index}\x00"
+        sentinels[sentinel] = slot
+        insertions.setdefault(moves.get(slot["id"], slot["start"]), []).append(
+            (sentinel, slot["id"] in moves)
+        )
+        removals[slot["start"]] = slot["end"]
+    if len(removals) != len(slots):
+        return source
+
+    pieces = []
+    cursor = 0
+    while cursor <= len(source):
+        for sentinel, moved in insertions.get(cursor, []):
+            pieces.append(("\n\n" + sentinel + "\n\n") if moved else sentinel)
+        if cursor == len(source):
+            break
+        if cursor in removals:
+            cursor = removals[cursor]
+            continue
+        pieces.append(source[cursor])
+        cursor += 1
+    marked = "".join(pieces)
+
+    sentinel_pattern = re.compile("|".join(re.escape(value) for value in sentinels))
+    parts = []
+    updated = {}
+    last = 0
+    length = 0
+    for match in sentinel_pattern.finditer(marked):
+        chunk = marked[last:match.start()]
+        parts.append(chunk)
+        length += len(chunk)
+        slot = sentinels[match.group(0)]
+        label = str(slot.get("label") or "")
+        start = length
+        parts.append(label)
+        length += len(label)
+        updated[slot["id"]] = (start, length)
+        last = match.end()
+    parts.append(marked[last:])
+    revised = "".join(parts)
+    if len(updated) != len(slots):
+        return source
+
+    page_info["figure_slots"] = [
+        {
+            **slot,
+            "start": updated[slot["id"]][0],
+            "end": updated[slot["id"]][1],
+            "before": revised[max(0, updated[slot["id"]][0] - 100):updated[slot["id"]][0]],
+            "after": revised[updated[slot["id"]][1]:updated[slot["id"]][1] + 100],
+        }
+        for slot in slots
+    ]
+    notes.append(f"已按原生题号与题组位置将 {len(moves)} 个配图占位归到对应题目。")
+    return revised
 
 
 _DESCRIPTION_STOPWORDS = frozenset({
@@ -373,7 +607,40 @@ def _figure_overlap_warning(first: list, second: list, *, after_guard: bool = Fa
     return ""
 
 
-def _validate_layout(result: dict, page_info: dict, *, notes: list[str] | None = None) -> tuple[list[dict], list[str]]:
+_FORMULA_FRAGMENT_TEXT = re.compile(r"\s*(?:\([A-E]\)\s*)?\[矢量公式\]\s*")
+
+
+def _is_formula_only_crop(bbox, candidate_ids, page_info, formula_boxes) -> bool:
+    """A small vector-only crop that is itself a detected formula is not a figure.
+
+    Vision models occasionally return an option's typeset formula as a figure.
+    Reusing the native formula-block detector keeps this decision tied to the
+    PDF content instead of shape or model confidence.
+    """
+    if not formula_boxes or not candidate_ids:
+        return False
+    by_id = {candidate["id"]: candidate for candidate in page_info.get("candidates", [])}
+    chosen = [by_id.get(identifier) for identifier in candidate_ids]
+    if not chosen or not all(candidate and candidate.get("type") == "vector" for candidate in chosen):
+        return False
+    x0, y0, x1, y1 = (float(value) for value in bbox)
+    crop_area = max(1.0, (x1 - x0) * (y1 - y0))
+    if x1 - x0 > 220 or y1 - y0 > 90:
+        return False
+    for (fx0, fy0, fx1, fy1), text in formula_boxes:
+        if not _FORMULA_FRAGMENT_TEXT.fullmatch(str(text or "")):
+            continue
+        intersection = max(0.0, min(x1, fx1) - max(x0, fx0)) * max(0.0, min(y1, fy1) - max(y0, fy0))
+        formula_area = max(1.0, (fx1 - fx0) * (fy1 - fy0))
+        if intersection / crop_area >= 0.75 and intersection / formula_area >= 0.90:
+            return True
+    return False
+
+
+def _validate_layout(
+    result: dict, page_info: dict, *, notes: list[str] | None = None,
+    formula_boxes: list[tuple[tuple[float, float, float, float], str]] | None = None,
+) -> tuple[list[dict], list[str]]:
     """Reject malformed geometry/anchors; retain incomplete-coverage warnings."""
     if not isinstance(result, dict) or not isinstance(result.get("figures"), list):
         raise ValueError("配图区域列表格式无效。")
@@ -460,6 +727,10 @@ def _validate_layout(result: dict, page_info: dict, *, notes: list[str] | None =
         x0, y0, x1, y1 = bbox
         for message in refined["warnings"]:
             (notes if _is_processing_note(message) else warnings).append(message)
+        if _is_formula_only_crop(bbox, candidate_ids, page_info, formula_boxes):
+            accounted.update(identifier for identifier in candidate_ids if identifier in known)
+            notes.append("已识别为公式片段，未作为配图插入。")
+            continue
         # A claimed ID is evidence only when the proposed region actually
         # intersects it. Models cannot satisfy coverage by listing all IDs.
         for candidate in page_info.get("candidates", []):
@@ -788,8 +1059,25 @@ def enrich_pdf_with_figures(
                         raise layout_errors[local_index]
                     result = layouts[local_index]
                 check_cancelled()
-                figures, warnings = _validate_layout(result, info, notes=page_notes)
+                formula_boxes = []
+                try:
+                    if result.get("figures"):
+                        from mathbank.pdf_formula_review import detect_formula_blocks
+
+                        formula_boxes = [
+                            (tuple(float(value) for value in block["bbox"]), str(block.get("text") or ""))
+                            for block in detect_formula_blocks(page, page_index=page_index, max_blocks=64)
+                            if (isinstance(block, dict) and isinstance(block.get("bbox"), (list, tuple))
+                                and len(block["bbox"]) == 4)
+                        ]
+                except Exception:
+                    formula_boxes = []
+                figures, warnings = _validate_layout(
+                    result, info, notes=page_notes, formula_boxes=formula_boxes,
+                )
                 page_warnings.extend(warnings)
+                source = _move_figure_slots_to_question_headings(source, info, figures, page_notes)
+                texts[local_index] = source
                 _bind_described_figures_to_slots(figures, info, source, page_notes)
                 report["pages_checked"] += 1
                 for figure in figures:
